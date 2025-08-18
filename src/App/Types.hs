@@ -4,6 +4,7 @@
 
 module App.Types where
 
+import Data.Bifunctor (Bifunctor (bimap))
 import Data.Functor.Classes (Show1 (..), showsBinaryWith)
 import Data.Map.Lazy (Map)
 import qualified Data.Map.Lazy as Map
@@ -42,6 +43,11 @@ instance Functor (ParsedCode t) where
   fmap f = \case
     Code t -> Code t
     Include n x -> Include n (f x)
+
+instance Bifunctor ParsedCode where
+  bimap f g = \case
+    Code t -> Code (f t)
+    Include n x -> Include n (g x)
 
 instance Foldable (ParsedCode t) where
   foldMap f = \case

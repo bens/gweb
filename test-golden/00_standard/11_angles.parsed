@@ -10,7 +10,7 @@ title: Tricky Angles
       ( "main" , [] , [] )
       [ Code "int main(void) {\n    5 << 30 ? "
       , Include
-          6
+          14
           (Literate
              0
              ( "hello" , [] , [] )

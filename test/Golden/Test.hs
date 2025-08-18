@@ -109,7 +109,11 @@ findGoldens dir extnIn f = do
           withFile golden WriteMode (g inp md)
 
 runE :: (MonadIO m) => Handle -> ExceptT Text m () -> m ()
-runE h = runExceptT >=> either (liftIO . Text.IO.hPutStrLn h) pure
+runE h m = do
+  r <- runExceptT m
+  case r of
+    Left err -> liftIO (Text.IO.hPutStrLn h err)
+    Right ok -> pure ok
 
 getTemplate :: (MonadError Text m) => m (PD.Template LText.Text)
 getTemplate =

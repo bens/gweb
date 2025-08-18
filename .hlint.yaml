@@ -13,6 +13,7 @@
         - RankNTypes
         - RecordWildCards
         - ScopedTypeVariables
+        - ViewPatterns
 
 - modules:
     # Check that some modules aren't imported at all
