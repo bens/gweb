@@ -35,14 +35,14 @@
 -- These `Fix*` types can look like a lot of machinery, but their role is fairly
 -- straightforward: they provide a recursive structure where each layer may
 -- contain multiple child nodes, and it comes with a way of folding over that
--- structure using *catamorphisms*.
+-- structure using catamorphisms.
 --
 -- This matters because `gweb` needs to interpret the same tree of 'Literate'
 -- blocks in multiple ways. For example, as:
 --
---   - a *graph* of blocks and cross-references (for visualisation,
---     dependency checking, etc.).
---   - a *flattened tangle* of source code lines, ready to be written out.
+--   - a graph of blocks and cross-references (for visualisation, dependency
+--     checking, HTML annotations, etc.).
+--   - a flattened tangle of source code lines, ready to be written out.
 --
 -- These interpretations are expressed as F-algebras:
 --
