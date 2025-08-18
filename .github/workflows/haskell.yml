@@ -17,12 +17,16 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
-      - name: Update ghcup
-        run: ghcup upgrade
-      - uses: actions/setup-haskell@v1
-        with:
-          ghc-version: '9.6.7'
-          cabal-version: '3.14'
+
+
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends gnupg ca-certificates dirmngr curl git software-properties-common libtinfo5
+          mkdir -p "$HOME/.ghcup/bin"
+          curl -sL https://downloads.haskell.org/ghcup/0.1.50.2/x86_64-linux-ghcup-0.1.50.2 > "$HOME/.ghcup/bin/ghcup"
+          chmod a+x "$HOME/.ghcup/bin/ghcup"
+          "$HOME/.ghcup/bin/ghcup" install ghc 9.6.7 || (cat "$HOME"/.ghcup/logs/*.* && false)
+          "$HOME/.ghcup/bin/ghcup" install cabal 3.14.2.0 || (cat "$HOME"/.ghcup/logs/*.* && false)
 
       - name: Cache
         uses: actions/cache@v3
