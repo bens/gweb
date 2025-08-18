@@ -6,22 +6,22 @@
 module App.Graph
   ( Graph,
     Edge (..),
-    graph,
-    toDot,
+    toGraph,
 
     -- * The Algebra
+    GraphGen,
+    runGraphGen,
     alg,
-    Gen,
-    runGen,
+
+    -- * Visualisation
+    toDot,
   )
 where
 
 import App.FixN (AlgNE, FixNE, cataNE)
 import App.Parse (Literate (..))
 import App.Types (BlockName (..), ParsedCode (..))
-import Control.Applicative (liftA3)
 import Control.Monad.State.Strict (State, execState, modify)
-import Data.Bool (bool)
 import Data.Foldable (traverse_)
 import qualified Data.Graph.Inductive as G
 import Data.List.NonEmpty (NonEmpty ((:|)))
@@ -36,27 +36,35 @@ type Graph = G.Gr (Text, Literate BlockName) Edge
 data Edge = Link | Next
   deriving (Eq, Show)
 
-newtype Gen a = Gen {runGenG :: State Graph a}
+-- | A graph-generating action which can return a value.
+newtype GraphGen a = GraphGen {unGraphGen :: State Graph a}
   deriving (Functor, Applicative, Monad)
 
-runGen :: Gen a -> Graph
-runGen = flip execState G.empty . runGenG
+runGraphGen :: GraphGen a -> Graph
+runGraphGen = flip execState G.empty . unGraphGen
 
-instance (Semigroup a) => Semigroup (Gen a) where
-  Gen m <> Gen n = Gen (liftA2 (<>) m n)
+instance (Semigroup a) => Semigroup (GraphGen a) where
+  GraphGen m <> GraphGen n = GraphGen (liftA2 (<>) m n)
 
-instance (Monoid a) => Monoid (Gen a) where
+instance (Monoid a) => Monoid (GraphGen a) where
   mempty = pure mempty
   mappend = (<>)
 
 -- | Convert every node in the source graph tree into a computation that
--- generates graph fragments, then run all of those computations one after
-graph :: (Foldable f) => f (FixNE Literate) -> Graph
-graph = runGen . traverse_ (cataNE alg)
+-- generates graph fragments, then run all of those computations one after the
+-- other.
+toGraph :: (Foldable f) => f (FixNE Literate) -> Graph
+toGraph = runGraphGen . traverse_ (cataNE alg)
+
+type GraphNodeID = Int
+
+type SourceBlockID = Text
 
 -- | Convert a 'Literate' source code tree node into a computation which will
--- generate a graph fragment.
-alg :: AlgNE Literate (Gen (First (Int, Text)))
+-- generate a graph fragment. The return value is the graph node ID and the
+-- source block ID from the document of the first encountered block with that
+-- block ID. This is so that the next level up can reference that first block.
+alg :: AlgNE Literate (GraphGen (First (GraphNodeID, SourceBlockID)))
 alg lits = do
   firsts <-
     for (zipPrevNE lits) $ \(Literate i attr@(name, _, _) code, prev) -> do
@@ -64,7 +72,7 @@ alg lits = do
       -- blocks must link to the head of the list, hence using 'First'.
       code_with_link_edge_actions <- for code $ \case
         Code t -> pure (Code t, pure ())
-        Include n (x :: Gen (First (Int, Text))) -> do
+        Include n (x :: GraphGen (First (GraphNodeID, SourceBlockID))) -> do
           First (j, nm) <- x
           pure (Include n (BlockName nm), addEdge Link (Just i) (Just j))
       let (code', add_link_edge_actions) = unzip code_with_link_edge_actions
@@ -76,13 +84,15 @@ alg lits = do
       addEdge Next (litId <$> prev) (Just i)
       -- Add the edges to the linked nodes.
       sequence_ add_link_edge_actions
-      pure (pure (i, name))
+      pure (First (i, name))
   pure (sconcat firsts)
   where
-    addNode i x =
-      Gen . modify $ liftA3 bool (G.insNode (i, x)) id (G.gelem i)
-    addEdge e (Just i) (Just j) =
-      Gen . modify $ liftA3 bool (G.insEdge (i, j, e)) id (`G.hasEdge` (i, j))
+    addNode i x = GraphGen . modify $ \g ->
+      let already_exists = i `G.gelem` g
+       in if already_exists then g else G.insNode (i, x) g
+    addEdge e (Just i) (Just j) = GraphGen . modify $ \g ->
+      let already_exists = g `G.hasEdge` (i, j)
+       in if already_exists then g else G.insEdge (i, j, e) g
     addEdge _ _ _ = pure ()
 
 -- | Zip the elements of a list with the previous element, or with 'Nothing' for

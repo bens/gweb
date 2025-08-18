@@ -20,9 +20,9 @@ import qualified Text.Pandoc as PD
 -- | A description of source that needs to be tangled. 'tangle'name' must be a
 -- code block name.
 data Tangle = Tangle
-  { tangle'name :: Text,
-    tangle'path :: FilePath,
-    tangle'language :: Text
+  { tangleName :: Text,
+    tanglePath :: FilePath,
+    tangleLanguage :: Text
   }
   deriving (Eq, Ord, Show, Read)
 
@@ -63,9 +63,9 @@ instance (Show t) => Show1 (ParsedCode t) where
 -- * Metadata
 
 data Metadata = Metadata
-  { metadata'title :: Text,
-    metadata'genToC :: Bool,
-    metadata'tangles :: Set Tangle
+  { metadataTitle :: Text,
+    metadataGenToC :: Bool,
+    metadataTangles :: Set Tangle
   }
   deriving (Show)
 

@@ -38,10 +38,10 @@ devDocs dir metadata gr doc = do
                   ]
                   ++ body
         blk -> blk
-  (docAnn, headers) <- runStateT (annotate' gr doc') initHeaders
+  (docAnn, headers) <- runStateT (annotate gr doc') initHeaders
   docToc <-
-    if metadata'genToC metadata
-      then pure (annotate'TableOfContents headers docAnn)
+    if metadataGenToC metadata
+      then pure (annotateTableOfContents headers docAnn)
       else pure docAnn
   diagrams dir docToc
 
@@ -54,22 +54,22 @@ userDocs dir metadata gr doc = do
           | "dev-only" `elem` cls -> PD.Plain []
           | "review-remark" `elem` cls -> PD.Plain []
         blk -> blk
-  (docAnn, headers) <- runStateT (annotate' gr doc') initHeaders
+  (docAnn, headers) <- runStateT (annotate gr doc') initHeaders
   docToc <-
-    if metadata'genToC metadata
-      then pure (annotate'TableOfContents headers docAnn)
+    if metadataGenToC metadata
+      then pure (annotateTableOfContents headers docAnn)
       else pure docAnn
   diagrams dir docToc
 
-annotate' ::
+annotate ::
   (MonadError Text m, MonadState (Headers Int) m) =>
   (Graph -> PD.Pandoc -> m PD.Pandoc)
-annotate' gr =
+annotate gr =
   walkM $ \case
     PD.CodeBlock attr x ->
       -- If this codeblock isn't a literate programming codeblock then leave it
       -- unchanged.
-      fromMaybe (PD.CodeBlock (noLitId attr) x) <$> annotate'CodeBlock gr attr x
+      fromMaybe (PD.CodeBlock (noLitId attr) x) <$> annotateCodeBlock gr attr x
     PD.Header lvl (ident, cls, _kv) title -> do
       -- Collect all the headers to build the table of contents.
       hdr <- state (nextSection 1 succ ident cls lvl)
@@ -82,9 +82,9 @@ annotate' gr =
     noLitId (blkId, cls, kv) =
       (blkId, cls, filter ((/= "literate-id") . fst) kv)
 
-annotate'CodeBlock ::
+annotateCodeBlock ::
   (MonadError Text m) => Graph -> PD.Attr -> Text -> m (Maybe PD.Block)
-annotate'CodeBlock gr (blkId, cls, kv) _body = pure $ do
+annotateCodeBlock gr (blkId, cls, kv) _body = pure $ do
   ident <- List.lookup "literate-id" kv
   i <- readMaybe (Text.unpack ident)
   ctx <- fst (G.match i gr)
@@ -112,9 +112,8 @@ annotate'CodeBlock gr (blkId, cls, kv) _body = pure $ do
     (names, (incoming, _outgoing)) = allLinks gr
     heads = headNodes gr
 
-annotate'TableOfContents ::
-  Headers Int -> PD.Pandoc -> PD.Pandoc
-annotate'TableOfContents headers (PD.Pandoc meta doc) =
+annotateTableOfContents :: Headers Int -> PD.Pandoc -> PD.Pandoc
+annotateTableOfContents headers (PD.Pandoc meta doc) =
   PD.Pandoc meta (toc ++ doc)
   where
     tocInfo = filter (trim 2) (headerAccum headers [])

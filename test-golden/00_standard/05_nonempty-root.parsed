@@ -1,9 +1,9 @@
 title: Non-empty Root
 ========
 [ ( Tangle
-      { tangle'name = "main"
-      , tangle'path = "main.c"
-      , tangle'language = "cee"
+      { tangleName = "main"
+      , tanglePath = "main.c"
+      , tangleLanguage = "cee"
       }
   , Literate
       0

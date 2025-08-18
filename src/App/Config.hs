@@ -35,33 +35,33 @@ import qualified Text.Parser.Permutation as PP
 
 -- | Preliminary config data type, just holds directory paths.
 data ConfigRead = ConfigRead
-  { cr'docsDir :: FilePath,
-    cr'templatesDir :: FilePath,
-    cr'devOutputDir :: FilePath,
-    cr'userOutputDir :: FilePath,
-    cr'tangleDir :: FilePath,
-    cr'graphvizDir :: FilePath
+  { readDocsDir :: FilePath,
+    readTemplatesDir :: FilePath,
+    readDevOutputDir :: FilePath,
+    readUserOutputDir :: FilePath,
+    readTangleDir :: FilePath,
+    readGraphvizDir :: FilePath
   }
   deriving (Show)
 
 -- | Configuration, collected from finding and reading files in configured
 -- directories.
 data Config = Config
-  { config'inputs :: [Input],
-    config'templates :: Map Text (PD.Template LText.Text),
-    config'devOutputDir :: FilePath,
-    config'userOutputDir :: FilePath,
-    config'tangleDir :: FilePath,
-    config'graphvizDir :: FilePath
+  { configInputs :: [Input],
+    configTemplates :: Map Text (PD.Template LText.Text),
+    configDevOutputDir :: FilePath,
+    configUserOutputDir :: FilePath,
+    configTangleDir :: FilePath,
+    configGraphvizDir :: FilePath
   }
   deriving (Show)
 
 -- | An input Markdown file, along with the corresponding output paths.
 data Input = Input
-  { input'inPath :: FilePath,
-    input'outPathDev :: FilePath,
-    input'outPathUser :: FilePath,
-    input'outPathGraphViz :: FilePath
+  { inputInPath :: FilePath,
+    inputOutPathDev :: FilePath,
+    inputOutPathUser :: FilePath,
+    inputOutPathGraphViz :: FilePath
   }
   deriving (Show)
 
@@ -94,23 +94,23 @@ parseConfigRead dir = PP.permute $ do
 
 loadConfigRead :: ConfigRead -> ExceptT String IO Config
 loadConfigRead cfg_read = do
-  let config'devOutputDir = cr'devOutputDir cfg_read
-  let config'userOutputDir = cr'userOutputDir cfg_read
-  let config'graphvizDir = cr'graphvizDir cfg_read
-  let config'tangleDir = cr'tangleDir cfg_read
+  let configDevOutputDir = readDevOutputDir cfg_read
+  let configUserOutputDir = readUserOutputDir cfg_read
+  let configGraphvizDir = readGraphvizDir cfg_read
+  let configTangleDir = readTangleDir cfg_read
 
-  let docsDir = cr'docsDir cfg_read
+  let docsDir = readDocsDir cfg_read
   inputs <- liftIO (filter isMarkdown <$> listDirectory docsDir)
-  let config'inputs = do
+  let configInputs = do
         x <- inputs
-        let devOut = config'devOutputDir </> replaceExtension x "html"
-        let userOut = config'userOutputDir </> replaceExtension x "html"
-        let gvOut = config'graphvizDir </> replaceExtension x "dot"
+        let devOut = configDevOutputDir </> replaceExtension x "html"
+        let userOut = configUserOutputDir </> replaceExtension x "html"
+        let gvOut = configGraphvizDir </> replaceExtension x "dot"
         [Input (docsDir </> x) devOut userOut gvOut]
 
-  let tmplDir = cr'templatesDir cfg_read
+  let tmplDir = readTemplatesDir cfg_read
   tmpls <- liftIO (filter isTemplate <$> listDirectory tmplDir)
-  config'templates <- fmap Map.unions . for tmpls $ \name -> do
+  configTemplates <- fmap Map.unions . for tmpls $ \name -> do
     t <- liftIO (Text.IO.readFile (tmplDir </> name))
     liftIO (PD.compileTemplate "" t) >>= \case
       Right tmpl -> do

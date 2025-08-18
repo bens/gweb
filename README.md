@@ -209,7 +209,7 @@ plot foo using 1:2 with lines title "foo"
 
 The tool is stable: it was used internally for several years with issues fixed as they arose. Future improvements are mostly extensions or changes in direction, for example, exposing it as a library to make it easier to build custom literate programming tools, similar to [XMonad](http://xmonad.org).
 
-The code is well tested with golden tests, with property tests for one finicky feature too. Diagram integrations can cause test failures when tools (like GraphViz) include version comments in their output; stripping those comments would make the tests more reliable.
+The code is pretty well covered with golden tests. Diagram integrations can cause test failures when tools (like GraphViz) include version comments in their output; stripping those comments would make the tests more reliable.
 
 # Roadmap
 ## Multi-document projects

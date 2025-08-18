@@ -105,7 +105,7 @@ extractInfo doc@(PD.Pandoc meta _) = fn <$> parseMetadata meta
 -- cycles and invalid references is done at this point.
 buildSourceGraph ::
   CodeBlocks -> Tangle -> Validation (NonEmpty Text) (FixNE Literate)
-buildSourceGraph blocks root = findLinks Set.empty (BlockName (tangle'name root))
+buildSourceGraph blocks root = findLinks Set.empty (BlockName (tangleName root))
   where
     findLinks seen b@(BlockName nm) =
       case (Set.member b seen, Map.lookup b blocks) of
@@ -125,15 +125,15 @@ buildSourceGraph blocks root = findLinks Set.empty (BlockName (tangle'name root)
 
 parseMetadata :: PD.Meta -> Validation (NonEmpty Text) Metadata
 parseMetadata (PD.Meta meta) = do
-  metadata'title <- case Map.lookup "title" meta of
+  metadataTitle <- case Map.lookup "title" meta of
     Nothing -> failure "No title for document"
     Just x -> pure $ extractText x
-  metadata'genToC <- case Map.lookup "generate-toc" meta of
+  metadataGenToC <- case Map.lookup "generate-toc" meta of
     Nothing -> pure False
     Just (PD.MetaBool b) -> pure b
     Just x -> failure . Text.pack $ do
       printf "Expected boolean for generate-toc (%s)" (show x)
-  metadata'tangles <- case Map.lookup "tangles" meta of
+  metadataTangles <- case Map.lookup "tangles" meta of
     Nothing -> mempty
     Just (PD.MetaList ts) -> Set.fromList <$> traverse parseTangle ts
     Just _ -> failure "Failed to parse tangle roots"

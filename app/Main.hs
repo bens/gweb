@@ -5,11 +5,11 @@
 
 module Main (main) where
 
-import qualified App.Abutting as App (AbutLazyText, flatten)
+import qualified App.Abutting as App (Abut, flatten)
 import qualified App.Annotate as App (devDocs, userDocs)
 import qualified App.Config as Config (Config (..), Input (..), loadConfig)
 import App.FixN (bothNE, cataNE)
-import qualified App.Graph as Graph (Gen, alg, runGen, toDot)
+import qualified App.Graph as Graph (GraphGen, alg, runGraphGen, toDot)
 import qualified App.Options as Opt (Options (..), Output (..), parseOptions)
 import qualified App.Parse as App (Metadata (..), parse)
 import qualified App.Render as App (render)
@@ -44,41 +44,41 @@ main = do
           Left err -> putStrLn err *> fail "Failed to read config file"
           Right ok -> pure ok
 
-      for_ (Config.config'inputs cfg) $ \input' ->
+      for_ (Config.configInputs cfg) $ \input' ->
         (runExceptT >=> either Text.IO.putStrLn pure) $ do
           (doc, metadata, roots) <-
-            readFile (Config.input'inPath input') >>= App.parse
+            readFile (Config.inputInPath input') >>= App.parse
           tmpl <- getTemplate cfg "default"
 
           -- Compose two algebras into one, use them in a catamorphism.
           let alg = bothNE Graph.alg Tangle.alg
           let ( results ::
-                  [(Tangle, (Graph.Gen (First (Int, Text)), App.AbutLazyText))]
+                  [(Tangle, (Graph.GraphGen (First (Int, Text)), App.Abut))]
                 ) = [(root, cataNE alg fixn) | (root, fixn) <- roots]
 
-          let dir = takeDirectory (Config.input'inPath input')
-          let graph = Graph.runGen (traverse_ (fst . snd) results)
+          let dir = takeDirectory (Config.inputInPath input')
+          let graph = Graph.runGraphGen (traverse_ (fst . snd) results)
           let tangles = map (\(root, (_, tangled)) -> (root, tangled)) results
 
           when (Opt.OutputTangles `elem` outputs) $ do
             for_ tangles $ \(root, tangled) -> do
-              let path = Config.config'tangleDir cfg </> tangle'path root
+              let path = Config.configTangleDir cfg </> tanglePath root
               wr path (App.flatten tangled)
 
           when (Opt.OutputDevDocs `elem` outputs) $ do
             -- Use the graph of links and appends to generate docs
             doc' <- App.devDocs dir metadata graph doc
-            html <- App.render tmpl (App.metadata'title metadata) doc'
-            wr (Config.input'outPathDev input') html
+            html <- App.render tmpl (App.metadataTitle metadata) doc'
+            wr (Config.inputOutPathDev input') html
 
           when (Opt.OutputUserDocs `elem` outputs) $ do
             -- Use the graph of links and appends to generate docs
             doc' <- App.userDocs dir metadata graph doc
-            html <- App.render tmpl (App.metadata'title metadata) doc'
-            wr (Config.input'outPathUser input') html
+            html <- App.render tmpl (App.metadataTitle metadata) doc'
+            wr (Config.inputOutPathUser input') html
 
           when (Opt.OutputGraphViz `elem` outputs) $ do
-            wr (Config.input'outPathGraphViz input') $ do
+            wr (Config.inputOutPathGraphViz input') $ do
               Graph.toDot graph
 
 --------------------------------------------------------------------------------
@@ -96,6 +96,6 @@ wr path ltxt = liftIO $ do
 getTemplate ::
   (MonadError Text m) => Config.Config -> Text -> m (PD.Template LText.Text)
 getTemplate cfg nm =
-  case Map.lookup nm (Config.config'templates cfg) of
+  case Map.lookup nm (Config.configTemplates cfg) of
     Nothing -> throwError ("template not found: " <> Text.pack (show nm))
     Just tmpl -> pure tmpl

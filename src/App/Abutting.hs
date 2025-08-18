@@ -1,36 +1,34 @@
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE RankNTypes #-}
 
--- | An small API for collecting lines of lazy text together, where some lines
--- can be joined to the previous one. Also, collections of lines can be indented
--- by some number of spaces.
-module App.Abutting (Abutting (..), AbutLazyText, flatten) where
+module App.Abutting (Abut, abut, wrap, indent, flatten) where
 
 import Data.DList (DList)
 import qualified Data.DList as DL
 import qualified Data.Text.Lazy as LText
 
-class (Monoid a) => Abutting a where
-  wrap :: LText.Text -> a
-  abut :: a -> a -> a
-  indent :: Int -> a -> a
-
-data Line = Line !Int !LText.Text
+data Line = Line
+  { lineIndent :: !Int,
+    lineText :: !LText.Text
+  }
   deriving (Show)
 
 -- | The 'Semigroup' instance on lines does the abutting.
 instance Semigroup Line where
   Line i a <> Line _ b = Line i (a <> b)
 
-data AbutLazyText
+-- | For collecting lines of lazy text together, where the last line of one
+-- segment can be joined to the first line of another segment. Also, collections
+-- of lines can be indented by some number of spaces.
+data Abut
   = Nil
   | One !Line
-  | Many !Line (DList Line) !Line
+  | -- | First line, middle lines, last line.
+    Many !Line (DList Line) !Line
   deriving (Show)
 
 -- | The 'Semigroup' instance collects lines together without abutting.
-instance Semigroup AbutLazyText where
+instance Semigroup Abut where
   Nil <> y = y
   x <> Nil = x
   One x <> One y = Many x DL.empty y
@@ -38,38 +36,45 @@ instance Semigroup AbutLazyText where
   Many a as a' <> One y = Many a (DL.snoc as a') y
   Many a as a' <> Many b bs b' = Many a (as <> DL.fromList [a', b] <> bs) b'
 
-instance Monoid AbutLazyText where
+instance Monoid Abut where
   mempty = Nil
   mappend = (<>)
 
-instance Abutting AbutLazyText where
-  wrap lt =
-    case LText.breakOn "\n" lt of
-      ("", "") -> Nil
-      (x, "") -> One (e x)
-      (x, lt') -> case LText.breakOnEnd "\n" (LText.drop 1 lt') of
-        ("", y) -> Many (e x) DL.empty (e y)
-        (lt'', y) -> Many (e x) (DL.fromList (map e (LText.lines lt''))) (e y)
-    where
-      e = Line 0
+-- | Split into lines.
+wrap :: LText.Text -> Abut
+wrap lt =
+  case LText.breakOn "\n" lt of
+    ("", "") -> Nil
+    (x, "") -> One (e x)
+    (x, lt') -> case LText.breakOnEnd "\n" (LText.drop 1 lt') of
+      ("", y) -> Many (e x) DL.empty (e y)
+      (lt'', y) -> Many (e x) (DL.fromList (map e (LText.lines lt''))) (e y)
+  where
+    e = Line 0
 
-  abut = go
-    where
-      go Nil y = y
-      go x Nil = x
-      go (One x) (One y) = One (x <> y)
-      go (One x) (Many y ys y') = Many (x <> y) ys y'
-      go (Many x xs x') (One y) = Many x xs (x' <> y)
-      go (Many x xs x') (Many y ys y') = Many x (xs <> DL.cons (x' <> y) ys) y'
+-- | Combine two segments of lines, joining the last of one line with the first
+-- line of the other.
+abut :: Abut -> Abut -> Abut
+abut = go
+  where
+    go Nil y = y
+    go x Nil = x
+    go (One x) (One y) = One (x <> y)
+    go (One x) (Many y ys y') = Many (x <> y) ys y'
+    go (Many x xs x') (One y) = Many x xs (x' <> y)
+    go (Many x xs x') (Many y ys y') = Many x (xs <> DL.cons (x' <> y) ys) y'
 
-  indent i = \case
-    Nil -> Nil
-    One x -> One (incr x)
-    Many x xs x' -> Many (incr x) (fmap incr xs) (incr x')
-    where
-      incr (Line i' x) = Line (i + i') x
+-- | Increase the indent by 'n' columns.
+indent :: Int -> Abut -> Abut
+indent i = \case
+  Nil -> Nil
+  One x -> One (incr x)
+  Many x xs x' -> Many (incr x) (fmap incr xs) (incr x')
+  where
+    incr (Line i' x) = Line (i + i') x
 
-flatten :: AbutLazyText -> LText.Text
+-- | Extract into a LazyText.
+flatten :: Abut -> LText.Text
 flatten = \case
   Nil -> ""
   One x -> flattenLine x <> "\n"

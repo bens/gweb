@@ -4,12 +4,11 @@
 module Golden.Test (tests) where
 
 import qualified App.Annotate as SUT (devDocs, userDocs)
-import qualified App.Graph as SUT (graph, toDot)
+import qualified App.Graph as SUT (toDot, toGraph)
 import qualified App.Parse as SUT (Metadata (..), parse)
 import qualified App.Render as SUT (render)
 import qualified App.Tangle as SUT (tangle)
 import App.Types (Tangle (..))
-import Control.Monad ((>=>))
 import Control.Monad.Except (ExceptT, MonadError (throwError), runExceptT)
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Data.Foldable (for_)
@@ -35,7 +34,7 @@ tests =
         sequence
           [ k "parsed" $ \_path md h -> runE h $ do
               (doc, metadata, tangles) <- SUT.parse md
-              prn h $ printf "title: %s\n========" (SUT.metadata'title metadata)
+              prn h $ printf "title: %s\n========" (SUT.metadataTitle metadata)
               pretty h tangles
               prn h "========"
               pretty h doc,
@@ -46,30 +45,30 @@ tests =
                 pr h $ LText.unpack (SUT.tangle t),
             k "graph" $ \_path md h -> runE h $ do
               (_, _, tangles) <- SUT.parse md
-              pr h $ LText.unpack $ SUT.toDot $ SUT.graph (snd <$> tangles),
+              pr h $ LText.unpack $ SUT.toDot $ SUT.toGraph (snd <$> tangles),
             k "pandoc-dev" $ \path md h -> runE h $ do
               let dir = Path.takeDirectory path
               (doc, metadata, tangles) <- SUT.parse md
-              doc' <- SUT.devDocs dir metadata (SUT.graph (snd <$> tangles)) doc
+              doc' <- SUT.devDocs dir metadata (SUT.toGraph (snd <$> tangles)) doc
               pretty h doc',
             k "pandoc-user" $ \path md h -> runE h $ do
               let dir = Path.takeDirectory path
               (doc, metadata, tangles) <- SUT.parse md
-              doc' <- SUT.userDocs dir metadata (SUT.graph (snd <$> tangles)) doc
+              doc' <- SUT.userDocs dir metadata (SUT.toGraph (snd <$> tangles)) doc
               pretty h doc',
             k "html-dev" $ \path md h -> runE h $ do
               let dir = Path.takeDirectory path
               (doc, metadata, tangles) <- SUT.parse md
-              doc' <- SUT.devDocs dir metadata (SUT.graph (snd <$> tangles)) doc
+              doc' <- SUT.devDocs dir metadata (SUT.toGraph (snd <$> tangles)) doc
               tmpl <- getTemplate
-              html <- SUT.render tmpl (SUT.metadata'title metadata) doc'
+              html <- SUT.render tmpl (SUT.metadataTitle metadata) doc'
               pr h (LText.unpack html),
             k "html-user" $ \path md h -> runE h $ do
               let dir = Path.takeDirectory path
               (doc, metadata, tangles) <- SUT.parse md
-              doc' <- SUT.userDocs dir metadata (SUT.graph (snd <$> tangles)) doc
+              doc' <- SUT.userDocs dir metadata (SUT.toGraph (snd <$> tangles)) doc
               tmpl <- getTemplate
-              html <- SUT.render tmpl (SUT.metadata'title metadata) doc'
+              html <- SUT.render tmpl (SUT.metadataTitle metadata) doc'
               pr h (LText.unpack html)
           ]
     ]
