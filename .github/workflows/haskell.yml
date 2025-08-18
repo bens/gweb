@@ -18,16 +18,19 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-
       - name: apt
+        env:
+          GHCUP_VERSION: 0.1.50.2
+          GHC_VERSION: 9.6.7
+          CABAL_VERSION: 3.14.2.0
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends gnupg ca-certificates dirmngr curl git software-properties-common libtinfo6
           mkdir -p "$HOME/.ghcup/bin"
-          curl -sL https://downloads.haskell.org/ghcup/0.1.50.2/x86_64-linux-ghcup-0.1.50.2 > "$HOME/.ghcup/bin/ghcup"
-          chmod a+x "$HOME/.ghcup/bin/ghcup"
-          "$HOME/.ghcup/bin/ghcup" install ghc 9.6.7 || (cat "$HOME"/.ghcup/logs/*.* && false)
-          "$HOME/.ghcup/bin/ghcup" install cabal 3.14.2.0 || (cat "$HOME"/.ghcup/logs/*.* && false)
+          curl -sL https://downloads.haskell.org/ghcup/$GHCUP_VERSION/x86_64-linux-ghcup-$GHCUP_VERSION > "$HOME/.ghcup/bin/ghcup"
+          sudo chmod a+x "$HOME/.ghcup/bin/ghcup"
+          "$HOME/.ghcup/bin/ghcup" install ghc $GHC_VERSION || (cat "$HOME"/.ghcup/logs/*.* && false)
+          "$HOME/.ghcup/bin/ghcup" install cabal $CABAL_VERSION || (cat "$HOME"/.ghcup/logs/*.* && false)
 
       - name: Cache
         uses: actions/cache@v3
