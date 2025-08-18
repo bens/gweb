@@ -11,13 +11,20 @@ data Opt
   | Opt'OutputTangles
   | Opt'OutputUserDocs
   | Opt'OutputDevDocs
+  | Opt'OutputGraphViz
   | Opt'Help
   deriving (Eq, Show)
 
-data Options = Help String | Run FilePath [Output]
+data Options
+  = Help String
+  | Run FilePath [Output]
   deriving (Show)
 
-data Output = OutputTangles | OutputUserDocs | OutputDevDocs
+data Output
+  = OutputTangles
+  | OutputUserDocs
+  | OutputDevDocs
+  | OutputGraphViz
   deriving (Eq, Show)
 
 options :: [GetOpt.OptDescr Opt]
@@ -43,6 +50,11 @@ options =
       (GetOpt.NoArg Opt'OutputDevDocs)
       "Output developer documentation.",
     GetOpt.Option
+      ['G']
+      ["graphviz"]
+      (GetOpt.NoArg Opt'OutputGraphViz)
+      "Output GraphViz .dot graph of source blocks.",
+    GetOpt.Option
       "h?"
       ["help"]
       (GetOpt.NoArg Opt'Help)
@@ -65,10 +77,15 @@ parseOptions args =
     outputs =
       concatMap fn $ listOr allOutputs $ List.intersect allOutputs opts
     allOutputs =
-      [Opt'OutputTangles, Opt'OutputUserDocs, Opt'OutputDevDocs]
+      [ Opt'OutputTangles,
+        Opt'OutputUserDocs,
+        Opt'OutputDevDocs,
+        Opt'OutputGraphViz
+      ]
     listOr xs = \case [] -> xs; ys -> ys
     fn = \case
       Opt'OutputTangles -> [OutputTangles]
       Opt'OutputUserDocs -> [OutputUserDocs]
       Opt'OutputDevDocs -> [OutputDevDocs]
+      Opt'OutputGraphViz -> [OutputGraphViz]
       _ -> []

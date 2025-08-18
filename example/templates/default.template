@@ -1,0 +1,14 @@
+<html>
+  <head>
+    <meta charset="UTF-8">
+    <title>$title$ - Example</title>
+    <link rel="stylesheet" type="text/css" href="../index.css"/>
+  </head>
+  <body>
+    <header id="header">EXAMPLE</header>
+    <div id="title-block"><h1>Developer API</h1></div>
+    <main>
+$body$
+    </main>
+  </body>
+</html>

@@ -1,91 +1,117 @@
-cabal-version: 2.2
-
--- This file has been generated from package.yaml by hpack version 0.34.4.
---
--- see: https://github.com/sol/hpack
+cabal-version: 3.0
 
 name:           gweb
-version:        0.1.0.0
-description:    Please see the <README.md>.
+version:        0.2.0.0
+description:    A literate programming tool for Markdown documents.
 author:         Geora
-maintainer:     ben.sinclair@geora.io
+maintainer:     Ben Sinclair <ben@typius.com>
 copyright:      2022 Geora
-license:        NONE
+license:        MIT
 build-type:     Simple
 extra-source-files:
     README.md
     CHANGELOG.md
+    test-golden/00_standard/*.graph
+    test-golden/00_standard/*.html-dev
+    test-golden/00_standard/*.html-user
+    test-golden/00_standard/*.md
+    test-golden/00_standard/*.pandoc-dev
+    test-golden/00_standard/*.pandoc-user
+    test-golden/00_standard/*.parsed
+    test-golden/00_standard/*.tangled
+    test-golden/01_diagrams/*.graph
+    test-golden/01_diagrams/*.html-dev
+    test-golden/01_diagrams/*.html-user
+    test-golden/01_diagrams/*.md
+    test-golden/01_diagrams/*.pandoc-dev
+    test-golden/01_diagrams/*.pandoc-user
+    test-golden/01_diagrams/*.parsed
+    test-golden/01_diagrams/*.tangled
+
+flag live-repl
+  manual: True
+  default: False
+
+--------------------------------------------------------------------------------
+-- COMMON STANZAS
+--------------------------------------------------------------------------------
+
+common defaults
+    ghc-options: -Wall
+    default-language: Haskell2010
+    build-depends:
+        base                 >= 4.18    && < 4.22,
+        containers           >= 0.6     && < 1.0,
+        directory            >= 1.3.6   && < 2.0,
+        filepath             >= 1.4.300 && < 1.6,
+        pandoc               >= 3.3     && < 3.8,
+        text                 >= 2.0     && < 2.2,
+        mtl                  >= 2.3     && < 2.4,
+
+common lib-depends
+    build-depends:
+        blaze-markup         >= 0.8.3   && < 0.9,
+        dlist                >= 1.0     && < 1.1,
+        doclayout            >= 0.5     && < 0.6,
+        fgl                  >= 5.8.3   && < 5.9,
+        lens                 >= 5       && < 6,
+        lens-xml             >= 0.1     && < 0.2,
+        megaparsec           >= 9.7.0   && < 9.8,
+        pandoc-types         >= 1.23.1  && < 1.24,
+        parsers              >= 0.12.12 && < 0.13,
+        process              >= 1.6.25  && < 1.7,
+        quiet                >= 0.2     && < 0.3,
+        validation-selective >= 0.2.0   && < 0.3,
+        xml                  >= 1.3.14  && < 1.4,
+
+-- When the live-repl flag is enabled, reference the library sources directly so
+-- they can be reloaded in a repl without compiling the library, otherwise
+-- depend on the library as usual. It is disabled by default.
+common live-repl
+    if flag(live-repl)
+        import: lib-depends
+        hs-source-dirs: src
+    else
+        build-depends: gweb
+
+--------------------------------------------------------------------------------
+-- MAIN TARGETS
+--------------------------------------------------------------------------------
 
 library
-  exposed-modules:
-      App.Abutting
-      App.Annotate
-      App.Config
-      App.Diagram
-      App.FixN
-      App.Graph
-      App.Options
-      App.Parse
-      App.Render
-      App.Tangle
-      App.Types
-  hs-source-dirs: src
-  ghc-options: -Wall
-  build-depends:
-      base
-    , blaze-markup
-    , containers
-    , directory
-    , dlist
-    , doclayout
-    , fgl
-    , filepath
-    , lens
-    , lens-xml
-    , megaparsec
-    , mtl
-    , pandoc
-    , pandoc-types
-    , process
-    , quiet
-    , text
-    , validation-selective
-    , xml
-  default-language: Haskell2010
+    import: defaults, lib-depends
+    hs-source-dirs: src
+    exposed-modules:
+        App.Abutting
+        App.Annotate
+        App.Config
+        App.Diagram
+        App.FixN
+        App.Graph
+        App.Options
+        App.Parse
+        App.Render
+        App.Tangle
+        App.Types
 
 executable gweb
-  main-is: Main.hs
-  hs-source-dirs: app
-  ghc-options: -Wall -O3
-  build-depends:
-      base
-    , containers
-    , directory
-    , filepath
-    , gweb
-    , mtl
-    , pandoc
-    , text
-  default-language: Haskell2010
+    import: defaults, live-repl
+    main-is: Main.hs
+    hs-source-dirs: app
+    ghc-options: -O3
 
 test-suite gweb-test
-  type: exitcode-stdio-1.0
-  main-is: Main.hs
-  other-modules:
-      App.Abutting.Test
-      Golden.Test
-  hs-source-dirs: test
-  ghc-options: -Wall -threaded -rtsopts -with-rtsopts=-N
-  build-depends:
-      base
-    , filepath
-    , gweb
-    , mtl
-    , pandoc
-    , pretty-show
-    , tasty
-    , tasty-golden
-    , tasty-hedgehog
-    , tasty-hunit
-    , text
-  default-language: Haskell2010
+    import: defaults, live-repl
+    type: exitcode-stdio-1.0
+    main-is: Main.hs
+    other-modules:
+        App.Abutting.Test
+        Golden.Test
+    hs-source-dirs: test
+    ghc-options: -threaded -rtsopts -with-rtsopts=-N
+    build-depends:
+        pretty-show    >= 1.9   && < 1.11,
+        tasty          >= 1.4   && < 1.6,
+        tasty-golden   >= 2.3.3 && < 2.4,
+        tasty-hedgehog >= 1.4   && < 1.5,
+        tasty-hunit    >= 0.10  && < 0.11,

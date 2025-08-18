@@ -1,7 +1,6 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE TupleSections #-}
 
 module App.Annotate (devDocs, userDocs) where
 
@@ -16,7 +15,7 @@ import Data.Bifunctor (bimap)
 import Data.Foldable (fold, toList)
 import qualified Data.Graph.Inductive as G
 import qualified Data.List as List
-import Data.Map (Map)
+import Data.Map.Lazy (Map)
 import qualified Data.Map.Lazy as Map
 import Data.Maybe (fromMaybe)
 import Data.Text (Text)
@@ -32,13 +31,12 @@ devDocs dir metadata gr doc = do
   let doc' = flip walk doc $ \case
         PD.Div (ident, cls, kv) body
           | "review-remark" `elem` cls ->
-              PD.Div
-                (ident, cls, kv)
-                ( [ PD.Div ("", ["reviewer"], []) [PD.Plain [PD.Str ("-- " <> r)]]
-                    | ("reviewer", r) <- kv
+              PD.Div (ident, cls, kv) $ do
+                [ PD.Div ("", ["reviewer"], []) $ do
+                    [PD.Plain [PD.Str ("-- " <> r)]]
+                  | ("reviewer", r) <- kv
                   ]
-                    ++ body
-                )
+                  ++ body
         blk -> blk
   (docAnn, headers) <- runStateT (annotate' gr doc') initHeaders
   docToc <-
@@ -85,7 +83,7 @@ annotate' gr =
       (blkId, cls, filter ((/= "literate-id") . fst) kv)
 
 annotate'CodeBlock ::
-  MonadError Text m => Graph -> PD.Attr -> Text -> m (Maybe PD.Block)
+  (MonadError Text m) => Graph -> PD.Attr -> Text -> m (Maybe PD.Block)
 annotate'CodeBlock gr (blkId, cls, kv) _body = pure $ do
   ident <- List.lookup "literate-id" kv
   i <- readMaybe (Text.unpack ident)
@@ -97,16 +95,17 @@ annotate'CodeBlock gr (blkId, cls, kv) _body = pure $ do
               renderNeighbour ("succ", ">>", blkId) (G.out', snd) ctx,
               [renderTitle blkId]
             ]
-        ) :
-        renderInclusions
-          ( do
-              -- Find the head of the chain, then find all the blocks that
-              -- include it.
-              let (nm, _) = G.lab' ctx
-              hd <- toList (Map.lookup nm heads)
-              j <- Map.findWithDefault [] hd incoming
-              (j,) <$> toList (Map.lookup j names)
-          ),
+        )
+          : renderInclusions
+            ( do
+                -- Find the head of the chain, then find all the blocks that
+                -- include it.
+                let (nm, _) = G.lab' ctx
+                hd <- toList (Map.lookup nm heads)
+                j <- Map.findWithDefault [] hd incoming
+                name <- toList (Map.lookup j names)
+                pure ((j, name) :: (G.Node, Text))
+            ),
       renderCodeBlock heads (snd (G.lab' ctx))
     ]
   where
@@ -142,19 +141,21 @@ renderBodyHeader title = \case
     PD.Header
       (length path)
       (ident, [], [])
-      ( PD.Span ("", ["section-no"], []) [PD.Str (Text.intercalate "." $ map (Text.pack . show) path)] :
-        PD.Space :
-        title
+      ( PD.Span
+          ("", ["section-no"], [])
+          [PD.Str (Text.intercalate "." $ map (Text.pack . show) path)]
+          : PD.Space
+          : title
       )
   Appendix _ [] -> PD.Plain [PD.Str ""]
   Appendix ident (x : xs) ->
     PD.Header
       (length xs + 1)
       (ident, ["appendix"], [])
-      ( PD.Str (if null xs then "Appendix " <> ts else ts) :
-        PD.Str ":" :
-        PD.Space :
-        title
+      ( PD.Str (if null xs then "Appendix " <> ts else ts)
+          : PD.Str ":"
+          : PD.Space
+          : title
       )
     where
       ts =
@@ -166,14 +167,19 @@ renderToCHeader title = \case
   Section _ path ->
     PD.Span
       ("", ["section"], [("toc-level", Text.pack (show (length path)))])
-      [ PD.Span ("", ["toc-number"], []) [PD.Str (Text.intercalate "." $ map (Text.pack . show) path)],
+      [ PD.Span ("", ["toc-number"], []) $ do
+          [PD.Str (Text.intercalate "." $ map (Text.pack . show) path)],
         PD.Span ("", ["toc-item"], []) [PD.Str title]
       ]
   Appendix _ [] -> PD.Str ""
   Appendix _ path@(x : xs) ->
     PD.Span
-      ("", ["appendix"], [("toc-level", if null xs then "Appendix " <> ts else ts)])
-      [ PD.Span ("", ["toc-number"], []) [PD.Str (Text.intercalate "." $ map (Text.pack . show) path)],
+      ( "",
+        ["appendix"],
+        [("toc-level", if null xs then "Appendix " <> ts else ts)]
+      )
+      [ PD.Span ("", ["toc-number"], []) $ do
+          [PD.Str (Text.intercalate "." $ map (Text.pack . show) path)],
         PD.Span ("", ["toc-item"], []) [PD.Str title]
       ]
     where
@@ -185,7 +191,7 @@ renderTitle :: Text -> PD.Inline
 renderTitle blkId = PD.Span ("", ["title"], []) [PD.Str blkId]
 
 renderNeighbour ::
-  Show a =>
+  (Show a) =>
   (Text, Text, Text) ->
   (G.Context node Edge -> [(a, a, Edge)], (a, a) -> a) ->
   (G.Context node Edge -> [PD.Inline])
@@ -211,7 +217,7 @@ renderNeighbour (lbl, txt, blkId) (edges, prj) ctx =
 renderInclusions :: [(G.Node, Text)] -> [PD.Block]
 renderInclusions incls =
   [ PD.Plain [PD.Str " | ", PD.Span ("", ["inclusions"], []) items]
-    | not (null items)
+  | not (null items)
   ]
   where
     items =
@@ -220,7 +226,7 @@ renderInclusions incls =
             ("", [], [])
             [PD.Str lbl]
             ("#src-" <> Text.pack (show j), lbl <> ":" <> Text.pack (show j))
-          | (j, lbl) <- List.sort incls
+        | (j, lbl) <- List.sort incls
         ]
 
 renderCodeBlock :: Map Text G.Node -> Literate BlockName -> PD.Block
@@ -243,7 +249,7 @@ renderCodeBlock heads lit =
                   ("#src-" <> Text.pack (show j), ""),
                 PD.Str ">>"
               ]
-      | block <- litCode lit
+    | block <- litCode lit
     ]
 
 --
@@ -310,7 +316,7 @@ incrHeader initA nextA lvl hdr =
 -- HELPERS
 --
 
-extractText :: Walkable PD.Inline a => a -> Text
+extractText :: (Walkable PD.Inline a) => a -> Text
 extractText = query $ \case
   PD.Str x -> x
   PD.Space -> " "
@@ -321,8 +327,8 @@ headNodes :: Graph -> Map Text G.Node
 headNodes gr =
   Map.fromList
     [ (nm, i)
-      | (i, (nm, _)) <- G.labNodes gr,
-        null [() | (_, _, Next) <- G.inn gr i]
+    | (i, (nm, _)) <- G.labNodes gr,
+      null [() | (_, _, Next) <- G.inn gr i]
     ]
 
 -- Collect all the incoming and outgoing inclusion links between nodes.
@@ -332,11 +338,11 @@ allLinks = fmap (bimap unMapMonoid unMapMonoid) . G.ufold fn mempty
   where
     fn ctx m =
       fold
-        ( m :
-          (Map.singleton i lbl, mempty) :
-            [ (mempty, (mapMonoid j [k], mapMonoid k [j]))
+        ( m
+            : (Map.singleton i lbl, mempty)
+            : [ (mempty, (mapMonoid j [k], mapMonoid k [j]))
               | (j, k) <- inn ++ out
-            ]
+              ]
         )
       where
         (i, (lbl, _)) = G.labNode' ctx

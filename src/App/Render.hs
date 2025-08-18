@@ -5,8 +5,8 @@ module App.Render (render) where
 
 import Control.Monad.Except (MonadError (throwError))
 import Control.Monad.IO.Class (MonadIO)
-import Data.Map (Map)
-import qualified Data.Map as Map
+import Data.Map.Lazy (Map)
+import qualified Data.Map.Lazy as Map
 import Data.Text (Text)
 import qualified Data.Text as Text
 import qualified Data.Text.Lazy as LText

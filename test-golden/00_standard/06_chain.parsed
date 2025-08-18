@@ -5,9 +5,8 @@ title: Chain
       , tangle'path = "main.c"
       , tangle'language = "cee"
       }
-  , [ Literate 0 ( "main" , [] , [] ) [ Code "int main(void) {" ]
-    , Literate 1 ( "main" , [] , [] ) [ Code "    return 0;\n}" ]
-    ]
+  , Literate 0 ( "main" , [] , [] ) [ Code "int main(void) {" ] :|
+      [ Literate 1 ( "main" , [] , [] ) [ Code "    return 0;\n}" ] ]
   )
 ]
 ========

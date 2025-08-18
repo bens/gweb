@@ -59,7 +59,23 @@ Pandoc
           ( "" , [ "diagram-error" ] , [] )
           "\ngnuplot> plott $foo using 1:2 with lines title \"foo\"\n         ^\n         line 6: invalid command\n\n"
       ]
-  , Null
+  , Para
+      [ Quoted DoubleQuote [ Str "plott" ]
+      , Space
+      , Str "is"
+      , Space
+      , Str "invalid,"
+      , Space
+      , Str "it"
+      , Space
+      , Str "should"
+      , Space
+      , Str "be"
+      , Space
+      , Quoted DoubleQuote [ Str "plot" ]
+      , Str "."
+      ]
+  , Plain []
   , Header
       2
       ( "an-invalid-data-table-reference-and-the-table-itself-fails-to-parse."
@@ -96,7 +112,7 @@ Pandoc
       ( "" , [ "gnuplot" ] , [ ( "table" , "broken" ) ] )
       [ CodeBlock
           ( "" , [] , [] )
-          "set xtic 1\nplott $broken using 1:2 with lines title \"broken\""
+          "set xtic 1\nplot $broken using 1:2 with lines title \"broken\""
       , Div
           ( "" , [ "diagram-error" ] , [] )
           [ OrderedList

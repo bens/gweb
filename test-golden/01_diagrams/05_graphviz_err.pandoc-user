@@ -44,4 +44,20 @@ Pandoc
           ( "" , [ "diagram-error" ] , [] )
           "Error: <stdin>: syntax error in line 1 near 'digrap'\n"
       ]
+  , Para
+      [ Quoted DoubleQuote [ Str "digrap" ]
+      , Space
+      , Str "is"
+      , Space
+      , Str "invalid,"
+      , Space
+      , Str "it"
+      , Space
+      , Str "should"
+      , Space
+      , Str "be"
+      , Space
+      , Quoted DoubleQuote [ Str "digraph" ]
+      , Str "."
+      ]
   ]

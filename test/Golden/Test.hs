@@ -46,28 +46,28 @@ tests =
                 pr h $ LText.unpack (SUT.tangle t),
             k "graph" $ \_path md h -> runE h $ do
               (_, _, tangles) <- SUT.parse md
-              pr h $ LText.unpack $ SUT.toDot $ SUT.graph (map snd tangles),
+              pr h $ LText.unpack $ SUT.toDot $ SUT.graph (snd <$> tangles),
             k "pandoc-dev" $ \path md h -> runE h $ do
               let dir = Path.takeDirectory path
               (doc, metadata, tangles) <- SUT.parse md
-              doc' <- SUT.devDocs dir metadata (SUT.graph (map snd tangles)) doc
+              doc' <- SUT.devDocs dir metadata (SUT.graph (snd <$> tangles)) doc
               pretty h doc',
             k "pandoc-user" $ \path md h -> runE h $ do
               let dir = Path.takeDirectory path
               (doc, metadata, tangles) <- SUT.parse md
-              doc' <- SUT.userDocs dir metadata (SUT.graph (map snd tangles)) doc
+              doc' <- SUT.userDocs dir metadata (SUT.graph (snd <$> tangles)) doc
               pretty h doc',
             k "html-dev" $ \path md h -> runE h $ do
               let dir = Path.takeDirectory path
               (doc, metadata, tangles) <- SUT.parse md
-              doc' <- SUT.devDocs dir metadata (SUT.graph (map snd tangles)) doc
+              doc' <- SUT.devDocs dir metadata (SUT.graph (snd <$> tangles)) doc
               tmpl <- getTemplate
               html <- SUT.render tmpl (SUT.metadata'title metadata) doc'
               pr h (LText.unpack html),
             k "html-user" $ \path md h -> runE h $ do
               let dir = Path.takeDirectory path
               (doc, metadata, tangles) <- SUT.parse md
-              doc' <- SUT.userDocs dir metadata (SUT.graph (map snd tangles)) doc
+              doc' <- SUT.userDocs dir metadata (SUT.graph (snd <$> tangles)) doc
               tmpl <- getTemplate
               html <- SUT.render tmpl (SUT.metadata'title metadata) doc'
               pr h (LText.unpack html)
@@ -108,7 +108,7 @@ findGoldens dir extnIn f = do
         goldenVsFileDiff extnGolden diff golden golden $
           withFile golden WriteMode (g inp md)
 
-runE :: MonadIO m => Handle -> ExceptT Text m () -> m ()
+runE :: (MonadIO m) => Handle -> ExceptT Text m () -> m ()
 runE h = runExceptT >=> either (liftIO . Text.IO.hPutStrLn h) pure
 
 getTemplate :: (MonadError Text m) => m (PD.Template LText.Text)

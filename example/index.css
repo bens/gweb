@@ -1,0 +1,40 @@
+body {
+    max-width: 40em;
+    margin-left: auto;
+    margin-right: auto;
+}
+
+#table-of-contents .toc-number {
+    font-size: small;
+    padding-right: 1em;
+}
+
+div.review-remark {
+    font-style: italic;
+    color: grey;
+    padding-left: 1em;
+    border-left: 0.3em solid lightgray;
+    font-size: small;
+}
+
+div.dev-only {
+    font-style: italic;
+    color: red;
+    padding-left: 1em;
+    border-left: 0.3em solid lightgray;
+    font-size: small;
+}
+
+div.literate .src {
+    white-space: pre;
+    font-family: monospace;
+    background-color: lightgrey;
+    padding: 0em 1em 1em 1em;
+    margin: 0;
+    overflow-x: scroll;
+}
+
+div.literate .header {
+    font-size: small;
+    font-family: monospace;
+}

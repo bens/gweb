@@ -5,20 +5,20 @@ title: Tricky Angles
       , tangle'path = "main.c"
       , tangle'language = "cee"
       }
-  , [ Literate
-        1
-        ( "main" , [] , [] )
-        [ Code "int main(void) {\n    5 << 30 ? "
-        , Include
-            6
-            [ Literate
-                0
-                ( "hello" , [] , [] )
-                [ Code "printf(\"Hello, <<>> %s!\\n\", \"World\")" ]
-            ]
-        , Code " : 2 >> 10;\n}"
-        ]
-    ]
+  , Literate
+      1
+      ( "main" , [] , [] )
+      [ Code "int main(void) {\n    5 << 30 ? "
+      , Include
+          6
+          (Literate
+             0
+             ( "hello" , [] , [] )
+             [ Code "printf(\"Hello, <<>> %s!\\n\", \"World\")" ] :|
+             [])
+      , Code " : 2 >> 10;\n}"
+      ] :|
+      []
   )
 ]
 ========

@@ -5,7 +5,7 @@ title: Empty Root
       , tangle'path = "main.c"
       , tangle'language = "cee"
       }
-  , [ Literate 0 ( "main" , [] , [] ) [] ]
+  , Literate 0 ( "main" , [] , [] ) [] :| []
   )
 ]
 ========

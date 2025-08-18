@@ -5,20 +5,20 @@ title: Link
       , tangle'path = "main.c"
       , tangle'language = "cee"
       }
-  , [ Literate
-        0
-        ( "main" , [] , [] )
-        [ Code "int main(void) {\n    "
-        , Include
-            4
-            [ Literate
-                1
-                ( "body" , [] , [] )
-                [ Code "printf(\"Hello, %s!\\n\", \"World\");\nreturn 0;" ]
-            ]
-        , Code "\n}"
-        ]
-    ]
+  , Literate
+      0
+      ( "main" , [] , [] )
+      [ Code "int main(void) {\n    "
+      , Include
+          4
+          (Literate
+             1
+             ( "body" , [] , [] )
+             [ Code "printf(\"Hello, %s!\\n\", \"World\");\nreturn 0;" ] :|
+             [])
+      , Code "\n}"
+      ] :|
+      []
   )
 ]
 ========

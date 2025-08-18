@@ -12,3 +12,5 @@ digrap {
   E -> B
 }
 ```
+
+"digrap" is invalid, it should be "digraph".

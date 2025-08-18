@@ -1,0 +1,52 @@
+---
+
+- extensions:
+    - default: false    # All extensions are banned by default.
+    - name:
+        - ApplicativeDo
+        - DeriveGeneric
+        - DerivingVia
+        - FlexibleContexts
+        - GeneralizedNewtypeDeriving
+        - LambdaCase
+        - OverloadedStrings
+        - RankNTypes
+        - RecordWildCards
+        - ScopedTypeVariables
+
+- modules:
+    # Check that some modules aren't imported at all
+    - {name: Data.Map, within: []}  # Use Data.Map.<X> instead.
+
+    # Check that qualified modules are imported with standard short names
+    - {name: Data.Graph.Inductive, as: G}
+    - {name: Data.List, as: List}
+    - {name: Data.List.NonEmpty, as: NE}
+    - {name: Data.Map.Lazy, as: Map}
+    - {name: Data.Map.Strict, as: Map}
+    - {name: Data.Set, as: Set}
+    - {name: Data.Text, as: Text}
+    - {name: Data.Text.IO, as: Text.IO}
+    - {name: Data.Text.Lazy, as: LText}
+    - {name: Data.Text.Lazy.IO, as: LText.IO}
+    - {name: System.Environment, as: Env}
+    - {name: Text.Megaparsec, as: P}
+    - {name: Text.Megaparsec.Char, as: P}
+    - {name: Text.Megaparsec.Error, as: PE}
+    - {name: Text.Pandoc, as: PD}
+    - {name: Text.Pandoc.Definition, as: PD}
+    - {name: Text.Pandoc.Templates, as: PD}
+    - {name: Text.Parser.Permutation, as: PP}
+
+- functions:
+    - {name: undefined, within: []}
+    - {name: error, within: []}
+
+# Ban "module X(module X) where", to require a real export list.
+- warn: {name: Use explicit module export list}
+
+# Prefer not to use the extension so don't warn for tuple sections.
+- ignore: {name: Use tuple-section}
+
+# Don't generalise map to fmap, or ++ to <>
+- group: {name: generalise, enabled: false}

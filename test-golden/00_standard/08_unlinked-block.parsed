@@ -5,11 +5,11 @@ title: Unlinked Block
       , tangle'path = "main.c"
       , tangle'language = "cee"
       }
-  , [ Literate
-        0
-        ( "main" , [] , [] )
-        [ Code "int main(void) {\n    return 0;\n}" ]
-    ]
+  , Literate
+      0
+      ( "main" , [] , [] )
+      [ Code "int main(void) {\n    return 0;\n}" ] :|
+      []
   )
 ]
 ========

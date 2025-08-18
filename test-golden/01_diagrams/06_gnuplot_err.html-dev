@@ -13,10 +13,11 @@ gnuplot&gt; plott $foo using 1:2 with lines title &quot;foo&quot;
 
 </code></pre>
 </div>
+<p>“plott” is invalid, it should be “plot”.</p>
 <h2 id="an-invalid-data-table-reference-and-the-table-itself-fails-to-parse."><span class="section-no">1.2</span> An invalid data table reference, and the table itself fails to parse.</h2>
 <div class="gnuplot" table="broken">
 <pre><code>set xtic 1
-plott $broken using 1:2 with lines title &quot;broken&quot;</code></pre>
+plot $broken using 1:2 with lines title &quot;broken&quot;</code></pre>
 <div class="diagram-error">
 <ol>
 <li>Referenced data table not found: "broken"</li>
@@ -26,13 +27,13 @@ plott $broken using 1:2 with lines title &quot;broken&quot;</code></pre>
 <div class="hidden" data-table="borken">
 <table>
 <thead>
-<tr class="header">
+<tr>
 <th align="center">X</th>
 <th align="center">Y</th>
 </tr>
 </thead>
 <tbody>
-<tr class="odd">
+<tr>
 <td align="center"><strong>foo</strong></td>
 <td align="center"><em>bar</em></td>
 </tr>

@@ -13,6 +13,8 @@ set xtic 1
 plott $foo using 1:2 with lines title "foo"
 ```
 
+"plott" is invalid, it should be "plot".
+
 ::::: {data-table="foo" .hidden}
    X    Y
 ---- ----
@@ -27,7 +29,7 @@ plott $foo using 1:2 with lines title "foo"
 
 ``` {.gnuplot table="broken"}
 set xtic 1
-plott $broken using 1:2 with lines title "broken"
+plot $broken using 1:2 with lines title "broken"
 ```
 
 ::::: {data-table="borken" .hidden}

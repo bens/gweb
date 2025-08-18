@@ -36,4 +36,20 @@ Pandoc
   , CodeBlock
       ( "" , [ "dot" ] , [ ( "style" , "width: 20em" ) ] )
       "digrap {\n  D -> B\n  E -> B\n}"
+  , Para
+      [ Quoted DoubleQuote [ Str "digrap" ]
+      , Space
+      , Str "is"
+      , Space
+      , Str "invalid,"
+      , Space
+      , Str "it"
+      , Space
+      , Str "should"
+      , Space
+      , Str "be"
+      , Space
+      , Quoted DoubleQuote [ Str "digraph" ]
+      , Str "."
+      ]
   ]

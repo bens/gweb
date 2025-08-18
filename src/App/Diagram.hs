@@ -40,7 +40,7 @@ diagrams dir doc = do
 -- PIKCHR ----------------------------------------------------------------------
 --------------------------------------------------------------------------------
 
-pikchr :: MonadIO m => PD.Attr -> Text -> m PD.Block
+pikchr :: (MonadIO m) => PD.Attr -> Text -> m PD.Block
 pikchr attr body = do
   (ok, stdout, _stderr) <-
     liftIO $
@@ -60,7 +60,7 @@ pikchr attr body = do
 -- GRAPHVIZ --------------------------------------------------------------------
 --------------------------------------------------------------------------------
 
-graphviz :: MonadIO m => PD.Attr -> Text -> m PD.Block
+graphviz :: (MonadIO m) => PD.Attr -> Text -> m PD.Block
 graphviz attr body = do
   (ok, stdout, stderr) <-
     liftIO $
@@ -86,21 +86,21 @@ data GnuplotDataSourceRef
   = FileDataSource Text Text
   | TableDataSource Text
 
-shortcircuiting :: Monad m => ExceptT a m a -> m a
+shortcircuiting :: (Monad m) => ExceptT a m a -> m a
 shortcircuiting = runExceptT >=> either pure pure
 
-finish :: Monad m => a -> ExceptT a m b
+finish :: (Monad m) => a -> ExceptT a m b
 finish = throwError
 
 gnuplot ::
-  MonadIO m =>
+  (MonadIO m) =>
   (FilePath -> GnuplotTables -> PD.Attr -> Text -> m PD.Block)
 gnuplot dir tables attr@(ident, cls, kw) body = shortcircuiting $ do
   let tableNames :: [GnuplotDataSourceRef]
       tableNames =
         [ FileDataSource (Text.drop 5 k) path
-          | (k, path) <- kw,
-            "file-" `Text.isPrefixOf` k
+        | (k, path) <- kw,
+          "file-" `Text.isPrefixOf` k
         ]
           ++ [TableDataSource nm | ("table", nm) <- kw]
 
@@ -162,39 +162,39 @@ gnuplot dir tables attr@(ident, cls, kw) body = shortcircuiting $ do
                   "$" ++ Text.unpack nm ++ " << EOD\n" ++ fmt tbl ++ "EOD\n"
 
 findGnuplotDataTables ::
-  MonadState GnuplotTables m => PD.Pandoc -> m PD.Pandoc
+  (MonadState GnuplotTables m) => PD.Pandoc -> m PD.Pandoc
 findGnuplotDataTables = walkM $ \case
   PD.Div attrs@(_, cls, kw) body
     | Just nm <- List.lookup "data-table" kw -> do
-      (blk', errors) <- runWriterT $ case body of
-        [PD.Table _ _ _ _ tableBodies _] -> do
-          rows <-
-            for tableBodies $ \(PD.TableBody _ _ _ rows) ->
-              for rows $ \(PD.Row _ cells) ->
-                for cells $ \(PD.Cell _ _ _ _ bs) ->
-                  plain nm bs
-          modify ((nm, concat rows) :)
-          pure (if "hidden" `elem` cls then PD.Null else PD.Div attrs body)
-        _ ->
-          PD.Div attrs body
-            <$ tell ["Bad data-table, expected a table inside a data-table div"]
-      case errors of
-        [] -> pure blk'
-        _ ->
-          pure . PD.Div attrs . (body ++) $
-            [ PD.Div
-                ("", ["diagram-error"], [])
-                [ PD.OrderedList (1, PD.DefaultStyle, PD.DefaultDelim) $
-                    [[PD.Plain [PD.Str err]] | err <- errors]
-                ]
-            ]
+        (blk', errors) <- runWriterT $ case body of
+          [PD.Table _ _ _ _ tableBodies _] -> do
+            rows <-
+              for tableBodies $ \(PD.TableBody _ _ _ rows) ->
+                for rows $ \(PD.Row _ cells) ->
+                  for cells $ \(PD.Cell _ _ _ _ bs) ->
+                    plain nm bs
+            modify ((nm, concat rows) :)
+            pure (if "hidden" `elem` cls then PD.Plain [] else PD.Div attrs body)
+          _ ->
+            PD.Div attrs body
+              <$ tell ["Bad data-table, expected a table inside a data-table div"]
+        case errors of
+          [] -> pure blk'
+          _ ->
+            pure . PD.Div attrs . (body ++) $
+              [ PD.Div
+                  ("", ["diagram-error"], [])
+                  [ PD.OrderedList (1, PD.DefaultStyle, PD.DefaultDelim) $
+                      [[PD.Plain [PD.Str err]] | err <- errors]
+                  ]
+              ]
   blk -> pure blk
   where
     plain nm bs
       | [PD.Plain [PD.Str x]] <- bs = pure x
       | otherwise =
-        let msg = "Bad data table \"%s\": failed to parse plain text from %s"
-         in "" <$ tell [Text.pack (printf msg nm (show bs :: String))]
+          let msg = "Bad data table \"%s\": failed to parse plain text from %s"
+           in "" <$ tell [Text.pack (printf msg nm (show bs :: String))]
 
 -- parseGnuplotTableBodies ::
 --   Monad m => Text -> [PD.TableBody] -> WriterT [Text] m GnuplotTables

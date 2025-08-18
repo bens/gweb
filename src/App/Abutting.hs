@@ -5,13 +5,13 @@
 -- | An small API for collecting lines of lazy text together, where some lines
 -- can be joined to the previous one. Also, collections of lines can be indented
 -- by some number of spaces.
-module App.Abutting (Abutting (..), JL, flatten) where
+module App.Abutting (Abutting (..), AbutLazyText, flatten) where
 
 import Data.DList (DList)
 import qualified Data.DList as DL
 import qualified Data.Text.Lazy as LText
 
-class Monoid a => Abutting a where
+class (Monoid a) => Abutting a where
   wrap :: LText.Text -> a
   abut :: a -> a -> a
   indent :: Int -> a -> a
@@ -23,14 +23,14 @@ data Line = Line !Int !LText.Text
 instance Semigroup Line where
   Line i a <> Line _ b = Line i (a <> b)
 
-data JL
+data AbutLazyText
   = Nil
   | One !Line
   | Many !Line (DList Line) !Line
   deriving (Show)
 
 -- | The 'Semigroup' instance collects lines together without abutting.
-instance Semigroup JL where
+instance Semigroup AbutLazyText where
   Nil <> y = y
   x <> Nil = x
   One x <> One y = Many x DL.empty y
@@ -38,11 +38,11 @@ instance Semigroup JL where
   Many a as a' <> One y = Many a (DL.snoc as a') y
   Many a as a' <> Many b bs b' = Many a (as <> DL.fromList [a', b] <> bs) b'
 
-instance Monoid JL where
+instance Monoid AbutLazyText where
   mempty = Nil
   mappend = (<>)
 
-instance Abutting JL where
+instance Abutting AbutLazyText where
   wrap lt =
     case LText.breakOn "\n" lt of
       ("", "") -> Nil
@@ -69,7 +69,7 @@ instance Abutting JL where
     where
       incr (Line i' x) = Line (i + i') x
 
-flatten :: JL -> LText.Text
+flatten :: AbutLazyText -> LText.Text
 flatten = \case
   Nil -> ""
   One x -> flattenLine x <> "\n"

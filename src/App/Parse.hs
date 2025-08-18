@@ -1,39 +1,32 @@
-{-# LANGUAGE DeriveFunctor #-}
-{-# LANGUAGE DeriveGeneric #-}
-{-# LANGUAGE DerivingVia #-}
+{-# LANGUAGE ApplicativeDo #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE TupleSections #-}
-{-# LANGUAGE TypeApplications #-}
 
 module App.Parse (Literate (..), Metadata (..), parse) where
 
-import App.FixN (FixN (..))
+import App.FixN (FixNE (..))
 import App.Types
   ( BlockName (..),
+    Literate (..),
+    Metadata (..),
     ParsedCode (..),
     Tangle (..),
-    shows3With,
+    litBlockName,
   )
 import Control.Applicative (liftA3)
-import Control.Monad ((>=>))
 import Control.Monad.Except (MonadError (throwError))
 import Control.Monad.State.Strict (get, put, runState)
 import Data.Char (isAlphaNum)
 import Data.Foldable (toList)
-import Data.Functor.Classes (Show1 (..))
 import qualified Data.List as List
 import Data.List.NonEmpty (NonEmpty ((:|)))
-import Data.Map (Map)
-import qualified Data.Map as Map
-import Data.Set (Set)
+import Data.Map.Lazy (Map)
+import qualified Data.Map.Lazy as Map
 import qualified Data.Set as Set
 import Data.Text (Text)
 import qualified Data.Text as Text
 import Data.Traversable (for)
-import GHC.Generics (Generic)
-import Quiet (Quiet (..))
 import qualified Text.Pandoc as PD
 import Text.Pandoc.Walk (Walkable (query, walkM))
 import Text.Printf (printf)
@@ -44,90 +37,75 @@ import Validation (Validation (Failure, Success), validation)
 type CodeBlocks =
   Map BlockName (NonEmpty (Literate BlockName))
 
-data Literate a = Literate
-  { litId :: Int,
-    litAttr :: PD.Attr,
-    litCode :: [ParsedCode Text a]
-  }
-  deriving (Functor, Generic)
-  deriving (Show, Read) via (Quiet (Literate a))
-
-litBlockName :: Literate a -> BlockName
-litBlockName (Literate _ (k, _, _) _) = BlockName k
-
-instance Show1 Literate where
-  liftShowsPrec sp sl d (Literate i attr cb) =
-    shows3With sI sAttr sCB "Literate" d i attr cb
-    where
-      sI = showsPrec
-      sAttr = showsPrec
-      sCB = \_ -> liftShowList sp sl
-
-throwShow ::
-  (MonadError Text m, Show a) =>
-  ((a -> m b) -> (b -> m b) -> e -> m b) ->
-  (e -> m b)
-throwShow f = f (throwError . Text.pack . show) pure
-
+-- | Parse out:
+--   - a Pandoc representation of the document,
+--   - the file header metadata,
+--   - and a representation of the source code blocks and their links.
 parse ::
-  MonadError Text m =>
-  (Text -> m (PD.Pandoc, Metadata, [(Tangle, FixN Literate)]))
-parse =
-  throwShow either . PD.runPure . PD.readMarkdown mdOpts
-    >=> throwShow validation . parsePandoc
+  (MonadError Text m) =>
+  Text -> m (PD.Pandoc, Metadata, [(Tangle, FixNE Literate)])
+parse input = do
+  r <- handleEither . PD.runPure $ PD.readMarkdown mdOpts input
+  handleValidation (parsePandoc r)
   where
     mdOpts = PD.def {PD.readerExtensions = PD.pandocExtensions}
+    handleEither = either (throwError . Text.pack . show) pure
+    handleValidation = validation (throwError . Text.pack . show) pure
 
 parsePandoc ::
   PD.Pandoc ->
-  Validation [Text] (PD.Pandoc, Metadata, [(Tangle, FixN Literate)])
-parsePandoc doc =
-  case extractInfo doc of
-    Failure errs -> Failure errs
-    Success (doc', metadata@(Metadata _ _ roots), blocks) ->
-      fmap (doc',metadata,) . for (toList roots) $ \root ->
-        fmap (root,) . fixed blocks $ root
+  Validation [Text] (PD.Pandoc, Metadata, [(Tangle, FixNE Literate)])
+parsePandoc doc = case extractInfo doc of
+  Failure errs -> Failure errs
+  Success (doc', metadata@(Metadata _ _ roots), blocks) -> do
+    -- For each tangle root in the metadata, extract the source code blocks.
+    tangles <- for (toList roots) $ \root -> do
+      fixn <- buildSourceGraph blocks root
+      pure (root, fixn)
+    pure (doc', metadata, tangles)
 
+-- | Process a 'PD.Pandoc' document, giving each code block a unique ID, and at
+-- the same time collecting the code blocks found. Code blocks with the same
+-- source level identifier are collected together into (non-empty) lists.
 extractInfo ::
   PD.Pandoc -> Validation [Text] (PD.Pandoc, Metadata, CodeBlocks)
-extractInfo doc@(PD.Pandoc meta _) =
-  (doc',,groupBy litBlockName (allCode [])) <$> parseMetadata meta
+extractInfo doc@(PD.Pandoc meta _) = fn <$> parseMetadata meta
   where
-    (doc', (_, allCode)) =
-      flip runState (0 :: Int, id) . flip walkM doc $ \case
-        PD.CodeBlock attr@(blkId, cls, kv) body | blkId /= "" -> do
-          (i, acc) <- get
-          let kv' = kv ++ [("literate-id", Text.pack (show i))]
-          put (succ i, (Literate i attr (parseCodeBlock body) :) . acc)
-          pure (PD.CodeBlock (blkId, cls, kv') body)
-        blk ->
-          pure blk
+    fn metadata =
+      let (doc', (_, allCode)) = runState (walkM assignIds doc) (0 :: Int, id)
+       in (doc', metadata, groupBy litBlockName (allCode []))
 
-fixed :: CodeBlocks -> Tangle -> Validation [Text] (FixN Literate)
-fixed blocks root = go Set.empty (BlockName (tangle'name root))
+    -- Assign a unique ID to each source code block, while also collecting the
+    -- parsed code blocks.
+    assignIds = \case
+      PD.CodeBlock attr@(blkId, cls, kv) body | blkId /= "" -> do
+        (i, acc) <- get
+        let kv' = kv ++ [("literate-id", Text.pack (show i))]
+        put (succ i, (Literate i attr (parseCodeBlock body) :) . acc)
+        pure (PD.CodeBlock (blkId, cls, kv') body)
+      blk -> pure blk
+
+-- | Given a root source block for a tangle, dereference the block names in the
+-- 'CodeBlocks' mapping and produce a tree of 'Literate' nodes. Checking for
+-- cycles and invalid references is done at this point.
+buildSourceGraph :: CodeBlocks -> Tangle -> Validation [Text] (FixNE Literate)
+buildSourceGraph blocks root = assignIds Set.empty (BlockName (tangle'name root))
   where
-    go seen b@(BlockName nm) =
+    assignIds seen b@(BlockName nm) =
       case (Set.member b seen, Map.lookup b blocks) of
-        (_, Nothing) ->
-          Failure [nm <> " not found"]
-        (True, _) ->
-          Failure [nm <> " is in an infinite loop"]
-        (False, Just xs) ->
-          fmap FixN . for (toList xs) $ \(Literate k attr bs) ->
-            fmap (Literate k attr) . for bs $ \case
+        (_, Nothing) -> Failure [nm <> " not found"]
+        (True, _) -> Failure [nm <> " is in an infinite loop"]
+        (False, Just xs) -> do
+          lits <- for xs $ \(Literate k attr bs) -> do
+            chunks <- for bs $ \case
               Code t -> pure (Code t)
-              Include ind b' -> Include ind <$> go (Set.insert b seen) b'
+              Include ind b' -> Include ind <$> assignIds (Set.insert b seen) b'
+            pure (Literate k attr chunks)
+          pure (FixNE lits)
 
 --
 -- PARSING METADATA
 --
-
-data Metadata = Metadata
-  { metadata'title :: Text,
-    metadata'genToC :: Bool,
-    metadata'tangles :: Set Tangle
-  }
-  deriving (Show)
 
 parseMetadata :: PD.Meta -> Validation [Text] Metadata
 parseMetadata (PD.Meta meta) = liftA3 Metadata titleV genToCV tanglesV
@@ -146,9 +124,7 @@ parseMetadata (PD.Meta meta) = liftA3 Metadata titleV genToCV tanglesV
         Just x ->
           Failure
             [ Text.pack $
-                printf @(String -> String)
-                  "Expected boolean for generate-toc (%s)"
-                  (show x)
+                printf "Expected boolean for generate-toc (%s)" (show x)
             ]
     tanglesV =
       case Map.lookup "tangles" meta of
@@ -156,11 +132,13 @@ parseMetadata (PD.Meta meta) = liftA3 Metadata titleV genToCV tanglesV
         Just (PD.MetaList ts) -> flip foldMap ts $ \case
           PD.MetaMap m ->
             (\nm path lang -> Set.singleton (Tangle nm (Text.unpack path) lang))
-              <$> q "name" m <*> q "path" m <*> q "language" m
+              <$> q "name" m
+              <*> q "path" m
+              <*> q "language" m
           _ -> Failure ["Failed to parse tangle roots"]
         Just _ -> Failure ["Failed to parse tangle roots"]
 
-extractText :: Walkable PD.Inline a => a -> Text
+extractText :: (Walkable PD.Inline a) => a -> Text
 extractText = query $ \case
   PD.Str x -> x
   PD.Space -> " "
@@ -171,9 +149,10 @@ extractText = query $ \case
 --
 
 parseCodeBlock :: Text -> [ParsedCode Text BlockName]
-parseCodeBlock = go []
+parseCodeBlock = assignIds []
   where
-    go acc t =
+    -- I should probably use megaparsec for this rather than hand-rolling it...
+    assignIds acc t =
       case Text.breakOn "<<" t of
         ("", "") -> case acc of
           [] -> []
@@ -184,21 +163,16 @@ parseCodeBlock = go []
           (bname, t'') -> case Text.splitAt 2 t'' of
             (">>", t''')
               | not (Text.null bname) ->
-                Code (finish acc c) :
-                Include (indent c) (BlockName bname) :
-                go [] t'''
+                  Code (finish acc c)
+                    : Include (indent c) (BlockName bname)
+                    : assignIds [] t'''
             (_, _) ->
               let len = Text.length c + Text.length bname + 2
-               in go (Text.take len t : acc) t''
+               in assignIds (Text.take len t : acc) t''
     isBlockName c = isAlphaNum c || c `elem` ['-', '_']
     indent c = Text.length (Text.takeWhileEnd (/= '\n') c)
     finish acc t = List.foldr1 (flip (<>)) (t : acc)
 
 groupBy :: (Ord k, Foldable f) => (a -> k) -> f a -> Map k (NonEmpty a)
-groupBy f = foldr fn Map.empty
-  where
-    fn x m =
-      let k = f x
-       in case Map.lookup k m of
-            Nothing -> Map.insert k (x :| []) m
-            Just xs -> Map.insert k (xs <> (x :| [])) m
+groupBy f =
+  Map.unionsWith (flip (<>)) . foldMap (\x -> [Map.singleton (f x) (x :| [])])
