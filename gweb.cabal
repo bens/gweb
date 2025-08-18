@@ -8,6 +8,8 @@ maintainer:     Ben Sinclair <ben@typius.com>
 copyright:      2022 Geora
 license:        MIT
 build-type:     Simple
+tested-with:
+    GHC == 9.6.7,
 extra-source-files:
     README.md
     CHANGELOG.md
