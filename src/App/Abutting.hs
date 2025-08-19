@@ -34,7 +34,7 @@ instance Semigroup Abut where
   One x <> One y = Many x DL.empty y
   One x <> Many b bs b' = Many x (DL.cons b bs) b'
   Many a as a' <> One y = Many a (DL.snoc as a') y
-  Many a as a' <> Many b bs b' = Many a (as <> DL.fromList [a', b] <> bs) b'
+  Many a as a' <> Many b bs b' = Many a (DL.snoc as a' <> DL.cons b bs) b'
 
 instance Monoid Abut where
   mempty = Nil
@@ -45,14 +45,14 @@ wrap :: LText.Text -> Abut
 wrap lt =
   case LText.breakOn "\n" lt of
     ("", "") -> Nil
-    (x, "") -> One (e x)
+    (x, "") -> One (l0 x)
     (x, lt') -> case LText.breakOnEnd "\n" (LText.drop 1 lt') of
-      ("", y) -> Many (e x) DL.empty (e y)
-      (lt'', y) -> Many (e x) (DL.fromList (map e (LText.lines lt''))) (e y)
+      ("", y) -> Many (l0 x) DL.empty (l0 y)
+      (lt'', y) -> Many (l0 x) (DL.fromList (map l0 (LText.lines lt''))) (l0 y)
   where
-    e = Line 0
+    l0 = Line 0
 
--- | Combine two segments of lines, joining the last of one line with the first
+-- | Combine two segments of lines, joining the last line of one with the first
 -- line of the other.
 abut :: Abut -> Abut -> Abut
 abut = go
@@ -73,7 +73,7 @@ indent i = \case
   where
     incr (Line i' x) = Line (i + i') x
 
--- | Extract into a LazyText.
+-- | Extract into a 'LazyText'.
 flatten :: Abut -> LText.Text
 flatten = \case
   Nil -> ""

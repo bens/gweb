@@ -30,7 +30,7 @@ import qualified Data.Map.Lazy as Map
 import qualified Data.Set as Set
 import Data.Text (Text)
 import qualified Data.Text as Text
-import qualified Data.Text.Lazy as LazyText
+import qualified Data.Text.Lazy as LText
 import Data.Traversable (for)
 import qualified Text.Pandoc as PD
 import Text.Pandoc.Walk (Walkable (query, walkM))
@@ -105,7 +105,8 @@ extractInfo doc@(PD.Pandoc meta _) = fn <$> parseMetadata meta
 -- cycles and invalid references is done at this point.
 buildSourceGraph ::
   CodeBlocks -> Tangle -> Validation (NonEmpty Text) (FixNE Literate)
-buildSourceGraph blocks root = findLinks Set.empty (BlockName (tangleName root))
+buildSourceGraph blocks root =
+  findLinks Set.empty (BlockName (tangleName root))
   where
     findLinks seen b@(BlockName nm) =
       case (Set.member b seen, Map.lookup b blocks) of
@@ -162,21 +163,22 @@ extractText = query $ \case
 -- PARSING CODE BLOCKS
 --
 
-data Chunk = LBra Int64 | RBra Int64 | Literal LazyText.Text
+data Chunk = LBra Int64 | RBra Int64 | Literal LText.Text
   deriving (Show)
 
 parseCodeBlock :: Text -> [ParsedCode Text BlockName]
 parseCodeBlock =
-  map (first LazyText.toStrict) . matchChunks . simplifyChunks . toChunks
+  map (first LText.toStrict)
+    . matchChunks
+    . simplifyChunks
+    . toChunks
+    . LText.fromStrict
   where
     -- Find all the angle bracket symbols in the input.
-    toChunks t = case Text.break (`elem` ['<', '>']) t of
-      (pre, Text.uncons -> Just ('<', t')) ->
-        Literal (LazyText.fromStrict pre) : LBra 1 : toChunks t'
-      (pre, Text.uncons -> Just ('>', t')) ->
-        Literal (LazyText.fromStrict pre) : RBra 1 : toChunks t'
-      (pre, t') ->
-        [Literal (LazyText.fromStrict pre <> LazyText.fromStrict t')]
+    toChunks (LText.break (`elem` ['<', '>']) -> (pre, post)) = case post of
+      (LText.uncons -> Just ('<', lt)) -> Literal pre : LBra 1 : toChunks lt
+      (LText.uncons -> Just ('>', lt)) -> Literal pre : RBra 1 : toChunks lt
+      lt -> [Literal (pre <> lt)]
 
     -- Coalesce all the runs of LBra and RBra values. All remaining LBra and
     -- RBra have the length "2".
@@ -185,9 +187,9 @@ parseCodeBlock =
       -- Eliminate empty strings so they don't get between angle brackets.
       x : Literal "" : xs -> simplifyChunks (x : xs)
       LBra n : LBra m : xs -> simplifyChunks (LBra (n + m) : xs)
-      LBra n : xs -> langles n ++ simplifyChunks xs
+      LBra n : xs -> lbra n ++ simplifyChunks xs
       RBra n : RBra m : xs -> simplifyChunks (RBra (n + m) : xs)
-      RBra n : xs -> rangles n ++ simplifyChunks xs
+      RBra n : xs -> rbra n ++ simplifyChunks xs
       x : xs -> x : simplifyChunks xs
 
     -- Match patterns of <<, name, >>. Also coalesces literals and converts LBra
@@ -199,30 +201,25 @@ parseCodeBlock =
       Literal t : Literal t' : xs -> matchChunks (Literal (t <> t') : xs)
       Literal t : LBra _ : xs -> matchChunks (Literal (t <> "<<") : xs)
       Literal t : RBra _ : xs -> matchChunks (Literal (t <> ">>") : xs)
-      Literal "" : [] -> []
-      Literal t : [] -> [Code t]
+      Literal t : xs -> [Code t | t /= ""] ++ matchChunks xs
       LBra _ : Literal (asBlockName -> Just name) : RBra _ : xs ->
         Include 0 name : matchChunks xs
-      LBra _ : xs -> Code "<<" : matchChunks xs
-      RBra _ : xs -> Code ">>" : matchChunks xs
+      LBra _ : xs -> matchChunks (Literal "<<" : xs)
+      RBra _ : xs -> matchChunks (Literal ">>" : xs)
 
     asBlockName name =
-      BlockName (LazyText.toStrict name)
-        <$ guard (LazyText.all (\c -> isAlphaNum c || c `elem` ['-', '_']) name)
+      BlockName (LText.toStrict name)
+        <$ guard (LText.all (\c -> isAlphaNum c || c `elem` ['-', '_']) name)
     indent =
-      fromIntegral . LazyText.length . LazyText.takeWhileEnd (/= '\n')
+      fromIntegral . LText.length . LText.takeWhileEnd (/= '\n')
 
     -- These functions turn any solitary angle brackets back into text, and runs
     -- of more than two brackets return the excess as text, leaving just a
     -- double-angle bracket on the side appropriate for the direction.
-    langles n
-      | 1 == n = [Literal "<"]
-      | 2 < n = [Literal (LazyText.replicate (n - 2) "<"), LBra 2]
-      | otherwise = [LBra 2]
-    rangles n
-      | 1 == n = [Literal ">"]
-      | 2 < n = [RBra 2, Literal (LazyText.replicate (n - 2) ">")]
-      | otherwise = [RBra 2]
+    lbra 1 = [Literal "<"]
+    lbra n = [Literal (LText.replicate (n - 2) "<"), LBra 2]
+    rbra 1 = [Literal ">"]
+    rbra n = [RBra 2, Literal (LText.replicate (n - 2) ">")]
 
 groupBy :: (Ord k, Foldable f) => (a -> k) -> f a -> Map k (NonEmpty a)
 groupBy f =

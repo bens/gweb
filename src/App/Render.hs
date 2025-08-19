@@ -19,15 +19,13 @@ render ::
   (MonadError Text m, MonadIO m) =>
   (PD.Template LText.Text -> Text -> PD.Pandoc -> m LText.Text)
 render tmpl title doc = do
-  html <-
-    either (throwError . Text.pack . show) pure $
-      PD.runPure (PD.writeHtml4 htmlOpts doc)
+  html <- either (throwError . Text.pack . show) pure $ do
+    PD.runPure (PD.writeHtml4 htmlOpts doc)
   pure $ Doc.render Nothing $ PD.renderTemplate tmpl (context html)
   where
     htmlOpts = PD.def {PD.writerWrapText = PD.WrapNone}
     context :: Blaze.Markup -> Map Text LText.Text
-    context html =
-      Map.fromList
-        [ ("title", LText.fromStrict title),
-          ("body", Blaze.renderMarkup html)
+    context html = Map.fromList $ do
+      [ ("title", LText.fromStrict title),
+        ("body", Blaze.renderMarkup html)
         ]
