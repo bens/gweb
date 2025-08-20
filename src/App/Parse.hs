@@ -10,19 +10,17 @@ module App.Parse (Literate (..), Metadata (..), parse) where
 import App.FixN (FixNE (..))
 import App.Types
   ( BlockName (..),
+    CodeChunk (..),
     Literate (..),
     Metadata (..),
-    ParsedCode (..),
+    NodeID (..),
     Tangle (..),
     litBlockName,
   )
-import Control.Monad (guard)
-import Control.Monad.Except (MonadError (throwError))
 import Control.Monad.State.Strict (get, put, runState)
-import Data.Bifunctor (first)
 import Data.Char (isAlphaNum)
+import qualified Data.DList as DL
 import Data.Foldable (toList)
-import Data.Int (Int64)
 import Data.List.NonEmpty (NonEmpty ((:|)))
 import qualified Data.List.NonEmpty as NE
 import Data.Map.Lazy (Map)
@@ -30,7 +28,6 @@ import qualified Data.Map.Lazy as Map
 import qualified Data.Set as Set
 import Data.Text (Text)
 import qualified Data.Text as Text
-import qualified Data.Text.Lazy as LText
 import Data.Traversable (for)
 import qualified Text.Pandoc as PD
 import Text.Pandoc.Walk (Walkable (query, walkM))
@@ -39,92 +36,97 @@ import Validation (Validation (Failure, Success), failure, validation)
 
 -- | A mapping from block names to parsed code blocks which we get from parsing
 -- a Pandoc document.
-type CodeBlocks =
+type LiteratesTable =
   Map BlockName (NonEmpty (Literate BlockName))
+
+type V = Validation (NonEmpty Text)
 
 -- | Parse out:
 --   - a Pandoc representation of the document,
 --   - the file header metadata,
 --   - and a representation of the source code blocks and their links.
-parse ::
-  (MonadError Text m) =>
-  Text -> m (PD.Pandoc, Metadata, [(Tangle, FixNE Literate)])
+parse :: Text -> Either Text (PD.Pandoc, Metadata, [(Tangle, FixNE Literate)])
 parse input = do
-  r <- handleEither . PD.runPure $ PD.readMarkdown mdOpts input
-  handleValidation (parsePandoc r)
+  r <- handleE . PD.runPure $ PD.readMarkdown mdOpts input
+  handleV $ parsePandoc r
   where
     mdOpts = PD.def {PD.readerExtensions = PD.pandocExtensions}
-    handleEither =
-      either (throwError . Text.pack . show) pure
-    handleValidation =
-      validation (throwError . Text.pack . show . NE.toList) pure
+    handleE = either (Left . Text.pack . show) Right
+    handleV = validation (Left . Text.pack . show . NE.toList) Right
 
-parsePandoc ::
-  PD.Pandoc ->
-  Validation (NonEmpty Text) (PD.Pandoc, Metadata, [(Tangle, FixNE Literate)])
+parsePandoc :: PD.Pandoc -> V (PD.Pandoc, Metadata, [(Tangle, FixNE Literate)])
 parsePandoc doc = case extractInfo doc of
   Failure errs -> Failure errs
   Success (doc', metadata@(Metadata _ _ roots), blocks) -> do
-    -- For each tangle root in the metadata, extract the source code blocks.
+    -- For each tangle root in the metadata, extract the source code blocks into
+    -- a 'FixNE Literate' tree.
     tangles <- for (toList roots) $ \root -> do
       fixn <- buildSourceGraph blocks root
       pure (root, fixn)
     pure (doc', metadata, tangles)
 
-type Accum a = [a] -> [a]
-
-runAccum :: Accum a -> [a]
-runAccum acc = acc []
-
-accumulate :: Accum a -> a -> Accum a
-accumulate acc lit = (lit :) . acc
+-- * Extracting Info from Document
 
 -- | Process a 'PD.Pandoc' document, giving each code block a unique ID, and at
 -- the same time collecting the code blocks found. Code blocks with the same
 -- source level identifier are collected together into (non-empty) lists.
-extractInfo ::
-  PD.Pandoc -> Validation (NonEmpty Text) (PD.Pandoc, Metadata, CodeBlocks)
-extractInfo doc@(PD.Pandoc meta _) = fn <$> parseMetadata meta
+extractInfo :: PD.Pandoc -> V (PD.Pandoc, Metadata, LiteratesTable)
+extractInfo doc@(PD.Pandoc raw_metadata _) = do
+  metadata <- parseMetadata raw_metadata
+  let (doc', (_, code_accum)) = runState (walkM assignNodeID doc) (0, mempty)
+  pure (doc', metadata, groupBy litBlockName (DL.apply code_accum []))
   where
-    fn metadata =
-      let (doc', (_, code_accum)) = runState (walkM findLinks doc) (0 :: Int, id)
-       in (doc', metadata, groupBy litBlockName (runAccum code_accum))
-
     -- Assign a unique ID to each source code block, while also collecting the
     -- parsed code blocks.
-    findLinks = \case
-      PD.CodeBlock attr@(blkId, cls, kv) body | blkId /= "" -> do
+    assignNodeID = \case
+      PD.CodeBlock attr@(name, cls, kv) body | name /= "" -> do
         (i, acc) <- get
+        let acc' = DL.cons (Literate (NodeID i) attr (parseCodeBlock body)) acc
         let kv' = kv ++ [("literate-id", Text.pack (show i))]
-        put (succ i, accumulate acc (Literate i attr (parseCodeBlock body)))
-        pure (PD.CodeBlock (blkId, cls, kv') body)
-      blk -> pure blk
+        put (succ i, acc')
+        pure (PD.CodeBlock (name, cls, kv') body)
+      pd_block -> pure pd_block
 
--- | Given a root source block for a tangle, dereference the block names in the
--- 'CodeBlocks' mapping and produce a tree of 'Literate' nodes. Checking for
--- cycles and invalid references is done at this point.
-buildSourceGraph ::
-  CodeBlocks -> Tangle -> Validation (NonEmpty Text) (FixNE Literate)
-buildSourceGraph blocks root =
-  findLinks Set.empty (BlockName (tangleName root))
+groupBy :: (Ord k, Foldable f) => (a -> k) -> f a -> Map k (NonEmpty a)
+groupBy f =
+  Map.unionsWith (flip (<>)) . foldMap (\x -> [Map.singleton (f x) (x :| [])])
+
+-- * Resolving references
+
+-- | Given a root source block for a tangle, dereference the block names in
+-- 'LiteratesTable' and produce a tree of 'Literate' nodes. Checking for cycles
+-- and invalid references is done at this point.
+buildSourceGraph :: LiteratesTable -> Tangle -> V (FixNE Literate)
+buildSourceGraph all_literates root =
+  resolveBlockName rootContext (BlockName (tangleName root))
   where
-    findLinks seen b@(BlockName nm) =
-      case (Set.member b seen, Map.lookup b blocks) of
-        (_, Nothing) -> failure (nm <> " not found")
-        (True, _) -> failure (nm <> " is in an infinite loop")
-        (False, Just xs) -> do
-          lits <- for xs $ \(Literate k attr bs) -> do
-            chunks <- for bs $ \case
-              Code t -> pure (Code t)
-              Include ind b' -> Include ind <$> findLinks (Set.insert b seen) b'
-            pure (Literate k attr chunks)
-          pure (FixNE lits)
+    resolveBlockName ctx name@(BlockName nm)
+      | Just path <- hasSeen name ctx =
+          failure ("infinite loop discovered: " <> path)
+      | Just lits <- Map.lookup name all_literates =
+          FixNE <$> for lits (resolveLiterate (addToContext name ctx))
+      | path <- getPath ctx = failure $ do
+          if path == ""
+            then "root source block " <> nm <> " not found"
+            else path <> ": " <> nm <> " not found"
 
---
--- PARSING METADATA
---
+    resolveLiterate ctx (Literate k attr code_chunks) =
+      fmap (Literate k attr) . for code_chunks $ \case
+        Code t -> pure (Code t)
+        Include ind ref -> Include ind <$> resolveBlockName ctx ref
 
-parseMetadata :: PD.Meta -> Validation (NonEmpty Text) Metadata
+    rootContext = (Set.empty, [])
+    getPath (_seen, path) =
+      Text.intercalate " -> " (reverse path)
+    hasSeen name@(BlockName t) (seen, path)
+      | Set.member name seen = Just (getPath (seen, t : path))
+      | otherwise = Nothing
+    addToContext name@(BlockName t) (seen, path) =
+      (Set.insert name seen, t : path)
+
+-- * Parsing Metadata
+
+parseMetadata :: PD.Meta -> V Metadata
 parseMetadata (PD.Meta meta) = do
   metadataTitle <- case Map.lookup "title" meta of
     Nothing -> failure "No title for document"
@@ -140,7 +142,7 @@ parseMetadata (PD.Meta meta) = do
     Just _ -> failure "Failed to parse tangle roots"
   pure (Metadata {..})
 
-parseTangle :: PD.MetaValue -> Validation (NonEmpty Text) Tangle
+parseTangle :: PD.MetaValue -> V Tangle
 parseTangle = \case
   PD.MetaMap m -> do
     name <- q "name" m
@@ -159,45 +161,43 @@ extractText = query $ \case
   PD.Space -> " "
   _ -> ""
 
---
--- PARSING CODE BLOCKS
---
+-- * Parsing Source Code Blocks
 
-data Chunk = LBra Int64 | RBra Int64 | Literal LText.Text
+data Chunk = LBra Int | RBra Int | Literal Text
   deriving (Show)
 
-parseCodeBlock :: Text -> [ParsedCode Text BlockName]
-parseCodeBlock =
-  map (first LText.toStrict)
-    . matchChunks
-    . simplifyChunks
-    . toChunks
-    . LText.fromStrict
+parseCodeBlock :: Text -> [CodeChunk Text BlockName]
+parseCodeBlock = matchChunks . simplifyChunks . toChunks
   where
     -- Find all the angle bracket symbols in the input.
-    toChunks (LText.break (`elem` ['<', '>']) -> (pre, post)) = case post of
-      (LText.uncons -> Just ('<', lt)) -> Literal pre : LBra 1 : toChunks lt
-      (LText.uncons -> Just ('>', lt)) -> Literal pre : RBra 1 : toChunks lt
+    toChunks (Text.break (`elem` ['<', '>']) -> (pre, post)) = case post of
+      (Text.uncons -> Just ('<', lt)) -> Literal pre : LBra 1 : toChunks lt
+      (Text.uncons -> Just ('>', lt)) -> Literal pre : RBra 1 : toChunks lt
       lt -> [Literal (pre <> lt)]
 
     -- Coalesce all the runs of LBra and RBra values. All remaining LBra and
-    -- RBra have the length "2".
+    -- RBra values have the length "2", extras are returned to normal text.
     simplifyChunks = \case
-      [] -> []
-      -- Eliminate empty strings so they don't get between angle brackets.
+      -- Eliminate empty strings so they don't get between angle excessBrackets.
       x : Literal "" : xs -> simplifyChunks (x : xs)
+      -- Collect adjacent LBra values, then emit excess text before the LBra.
       LBra n : LBra m : xs -> simplifyChunks (LBra (n + m) : xs)
-      LBra n : xs -> lbra n ++ simplifyChunks xs
+      LBra 1 : xs -> Literal "<" : simplifyChunks xs
+      LBra n : xs -> Literal (excessBrackets n "<") : LBra 2 : simplifyChunks xs
+      -- Collect adjacent RBra values, then emit excess text after the RBra.
       RBra n : RBra m : xs -> simplifyChunks (RBra (n + m) : xs)
-      RBra n : xs -> rbra n ++ simplifyChunks xs
+      RBra 1 : xs -> Literal ">" : simplifyChunks xs
+      RBra n : xs -> RBra 2 : simplifyChunks (Literal (excessBrackets n ">") : xs)
       x : xs -> x : simplifyChunks xs
+      [] -> []
+      where
+        excessBrackets n t = Text.replicate (n - 2) t
 
     -- Match patterns of <<, name, >>. Also coalesces literals and converts LBra
     -- and RBra that don't match the pattern back into literal text.
     matchChunks = \case
-      [] -> []
       Literal t : LBra _ : Literal (asBlockName -> Just name) : RBra _ : xs ->
-        Code t : Include (indent t) name : matchChunks xs
+        Code t : Include (calculateIndent t) name : matchChunks xs
       Literal t : Literal t' : xs -> matchChunks (Literal (t <> t') : xs)
       Literal t : LBra _ : xs -> matchChunks (Literal (t <> "<<") : xs)
       Literal t : RBra _ : xs -> matchChunks (Literal (t <> ">>") : xs)
@@ -206,21 +206,24 @@ parseCodeBlock =
         Include 0 name : matchChunks xs
       LBra _ : xs -> matchChunks (Literal "<<" : xs)
       RBra _ : xs -> matchChunks (Literal ">>" : xs)
+      [] -> []
 
-    asBlockName name =
-      BlockName (LText.toStrict name)
-        <$ guard (LText.all (\c -> isAlphaNum c || c `elem` ['-', '_']) name)
-    indent =
-      fromIntegral . LText.length . LText.takeWhileEnd (/= '\n')
+calculateIndent :: Text -> Int
+calculateIndent = Text.length . Text.takeWhileEnd (/= '\n')
 
-    -- These functions turn any solitary angle brackets back into text, and runs
-    -- of more than two brackets return the excess as text, leaving just a
-    -- double-angle bracket on the side appropriate for the direction.
-    lbra 1 = [Literal "<"]
-    lbra n = [Literal (LText.replicate (n - 2) "<"), LBra 2]
-    rbra 1 = [Literal ">"]
-    rbra n = [RBra 2, Literal (LText.replicate (n - 2) ">")]
+asBlockName :: Text -> Maybe BlockName
+asBlockName name
+  | Just (a, mid, b) <- textEnds name,
+    isAlphaNum a && isAlphaNum b,
+    Text.all (\c -> isAlphaNum c || c `elem` ['-', '_']) mid =
+      Just (BlockName name)
+  | otherwise = Nothing
 
-groupBy :: (Ord k, Foldable f) => (a -> k) -> f a -> Map k (NonEmpty a)
-groupBy f =
-  Map.unionsWith (flip (<>)) . foldMap (\x -> [Map.singleton (f x) (x :| [])])
+-- | Get the first, last, and middle text of a text value. If the text is empty
+-- return Nothing, if it's one char then the first and last are the same char.
+textEnds :: Text -> Maybe (Char, Text, Char)
+textEnds t = case Text.uncons t of
+  Just (a, as) -> case Text.unsnoc as of
+    Just (mid, b) -> Just (a, mid, b)
+    Nothing -> Just (a, "", a)
+  Nothing -> Nothing

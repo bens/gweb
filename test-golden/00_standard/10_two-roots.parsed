@@ -6,16 +6,16 @@ title: Two Roots
       , tangleLanguage = "cee"
       }
   , Literate
-      1
+      (NodeID 1)
       ( "func" , [] , [] )
       [ Code "int func(void) {\n    if (0 < 2) {\n        "
       , Include
           8
           (Literate
-             2
+             (NodeID 2)
              ( "hello" , [] , [] )
              [ Code "printf(\"Hello, %s!\\n\", \"World\");" ] :|
-             [ Literate 3 ( "hello" , [] , [] ) [ Code "return 0;" ] ])
+             [ Literate (NodeID 3) ( "hello" , [] , [] ) [ Code "return 0;" ] ])
       , Code "\n    }\n}"
       ] :|
       []
@@ -26,16 +26,16 @@ title: Two Roots
       , tangleLanguage = "cee"
       }
   , Literate
-      0
+      (NodeID 0)
       ( "main" , [] , [] )
       [ Code "int main(void) {\n    "
       , Include
           4
           (Literate
-             2
+             (NodeID 2)
              ( "hello" , [] , [] )
              [ Code "printf(\"Hello, %s!\\n\", \"World\");" ] :|
-             [ Literate 3 ( "hello" , [] , [] ) [ Code "return 0;" ] ])
+             [ Literate (NodeID 3) ( "hello" , [] , [] ) [ Code "return 0;" ] ])
       , Code "\n}"
       ] :|
       []

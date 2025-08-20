@@ -26,35 +26,41 @@ data Tangle = Tangle
   }
   deriving (Eq, Ord, Show, Read)
 
+-- * NodeID
+
+-- | A unique node ID in the graph of all blocks of code with names.
+newtype NodeID = NodeID Int
+  deriving (Eq, Ord, Show, Read)
+
 -- * BlockName
 
 -- | A wrapper for code block names.
 newtype BlockName = BlockName Text
   deriving (Eq, Ord, Show, Read)
 
--- * ParsedCode
+-- * CodeChunk
 
--- | Either code text or an include reference. Polymorphic in the text type
--- ('t') and the reference values ('a').
-data ParsedCode t a = Code t | Include Int a
+-- | Either code text or an include reference. Polymorphic in the text type and
+-- the include type.
+data CodeChunk text a = Code text | Include Int a
   deriving (Eq, Show, Read)
 
-instance Functor (ParsedCode t) where
+instance Functor (CodeChunk text) where
   fmap f = \case
     Code t -> Code t
     Include n x -> Include n (f x)
 
-instance Bifunctor ParsedCode where
+instance Bifunctor CodeChunk where
   bimap f g = \case
     Code t -> Code (f t)
     Include n x -> Include n (g x)
 
-instance Foldable (ParsedCode t) where
+instance Foldable (CodeChunk text) where
   foldMap f = \case
     Code _ -> mempty
     Include _ x -> f x
 
-instance (Show t) => Show1 (ParsedCode t) where
+instance (Show text) => Show1 (CodeChunk text) where
   liftShowsPrec _ _ d (Code t) =
     showString "Code " . showsPrec d t
   liftShowsPrec sp _ d (Include i x) =
@@ -71,12 +77,12 @@ data Metadata = Metadata
 
 -- * Literate
 
--- | A node in the graph of source code blocks. Has a source-level identifier,
--- some attributes, and a list of code chunks.
+-- | A node in the graph of source code blocks. Has a unique node ID, some
+-- attributes, and a list of code chunks.
 data Literate a = Literate
-  { litId :: Int,
+  { litNodeId :: NodeID,
     litAttr :: PD.Attr,
-    litCode :: [ParsedCode Text a]
+    litCodeChunks :: [CodeChunk Text a]
   }
   deriving (Generic)
   deriving (Show, Read) via (Quiet (Literate a))
@@ -84,9 +90,9 @@ data Literate a = Literate
 instance Functor Literate where
   fmap f lit =
     Literate
-      { litId = litId lit,
+      { litNodeId = litNodeId lit,
         litAttr = litAttr lit,
-        litCode = map (fmap f) (litCode lit)
+        litCodeChunks = map (fmap f) (litCodeChunks lit)
       }
 
 litBlockName :: Literate a -> BlockName

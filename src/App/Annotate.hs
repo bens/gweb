@@ -7,7 +7,7 @@ module App.Annotate (devDocs, userDocs) where
 import App.Diagram (diagrams)
 import App.Graph (Edge (..), Graph)
 import App.Parse (Literate (..), Metadata (..))
-import App.Types (BlockName (..), MapMonoid (..), ParsedCode (..), mapMonoid)
+import App.Types (BlockName (..), CodeChunk (..), MapMonoid (..), mapMonoid)
 import Control.Monad.Except (MonadError)
 import Control.Monad.IO.Class (MonadIO)
 import Control.Monad.State (MonadState, modify, runStateT, state)
@@ -28,7 +28,7 @@ devDocs ::
   (MonadError Text m, MonadIO m) =>
   (FilePath -> Metadata -> Graph -> PD.Pandoc -> m PD.Pandoc)
 devDocs dir metadata gr doc = do
-  let doc' = flip walk doc $ \case
+  let annReview = \case
         PD.Div (ident, cls, kv) body
           | "review-remark" `elem` cls ->
               PD.Div (ident, cls, kv) $ do
@@ -38,28 +38,30 @@ devDocs dir metadata gr doc = do
                   ]
                   ++ body
         blk -> blk
-  (docAnn, headers) <- runStateT (annotate gr doc') initHeaders
-  docToc <-
+  (doc_annotated, headers) <-
+    runStateT (annotate gr . walk annReview $ doc) initHeaders
+  doc_annotated_toc <-
     if metadataGenToC metadata
-      then pure (annotateTableOfContents headers docAnn)
-      else pure docAnn
-  diagrams dir docToc
+      then pure (annotateTableOfContents headers doc_annotated)
+      else pure doc_annotated
+  diagrams dir doc_annotated_toc
 
 userDocs ::
   (MonadError Text m, MonadIO m) =>
   (FilePath -> Metadata -> Graph -> PD.Pandoc -> m PD.Pandoc)
 userDocs dir metadata gr doc = do
-  let doc' = flip walk doc $ \case
+  let annReview = \case
         PD.Div (_, cls, _) _
           | "dev-only" `elem` cls -> PD.Plain []
           | "review-remark" `elem` cls -> PD.Plain []
         blk -> blk
-  (docAnn, headers) <- runStateT (annotate gr doc') initHeaders
-  docToc <-
+  (doc_annotated, headers) <-
+    runStateT (annotate gr . walk annReview $ doc) initHeaders
+  doc_annotated_toc <-
     if metadataGenToC metadata
-      then pure (annotateTableOfContents headers docAnn)
-      else pure docAnn
-  diagrams dir docToc
+      then pure (annotateTableOfContents headers doc_annotated)
+      else pure doc_annotated
+  diagrams dir doc_annotated_toc
 
 annotate ::
   (MonadError Text m, MonadState (Headers Int) m) =>
@@ -100,7 +102,7 @@ annotateCodeBlock gr (blkId, cls, kv) _body = pure $ do
             ( do
                 -- Find the head of the chain, then find all the blocks that
                 -- include it.
-                let (nm, _) = G.lab' ctx
+                let (BlockName nm, _) = G.lab' ctx
                 hd <- toList (Map.lookup nm heads)
                 j <- Map.findWithDefault [] hd incoming
                 name <- toList (Map.lookup j names)
@@ -121,9 +123,7 @@ annotateTableOfContents headers (PD.Pandoc meta doc) =
       where
         f (hdr, nm) =
           [ PD.Plain
-              [ PD.Link
-                  ("", [], [])
-                  [renderToCHeader nm hdr]
+              [ PD.Link ("", [], []) [renderToCHeader nm hdr] $ do
                   ("#" <> target hdr, "")
               ]
           ]
@@ -137,51 +137,43 @@ annotateTableOfContents headers (PD.Pandoc meta doc) =
 renderBodyHeader :: [PD.Inline] -> Header Int -> PD.Block
 renderBodyHeader title = \case
   Section ident path ->
-    PD.Header
-      (length path)
-      (ident, [], [])
-      ( PD.Span
-          ("", ["section-no"], [])
-          [PD.Str (Text.intercalate "." $ map (Text.pack . show) path)]
-          : PD.Space
-          : title
-      )
+    PD.Header (length path) (ident, [], []) $ do
+      leader : PD.Space : title
+    where
+      leader = PD.Span ("", ["section-no"], []) $ do
+        [PD.Str (Text.intercalate "." $ map (Text.pack . show) path)]
   Appendix _ [] -> PD.Plain [PD.Str ""]
   Appendix ident (x : xs) ->
-    PD.Header
-      (length xs + 1)
-      (ident, ["appendix"], [])
-      ( PD.Str (if null xs then "Appendix " <> ts else ts)
-          : PD.Str ":"
-          : PD.Space
-          : title
-      )
+    PD.Header (length xs + 1) (ident, ["appendix"], []) $ do
+      leader : PD.Str ":" : PD.Space : title
     where
-      ts =
-        Text.intercalate "." $
-          Text.singleton (['A' ..] List.!! (x - 1)) : map (Text.pack . show) xs
+      leader = PD.Str (if null xs then "Appendix " <> ts else ts)
+      ts = Text.intercalate "." $ do
+        Text.singleton (['A' ..] List.!! (x - 1)) : map (Text.pack . show) xs
 
 renderToCHeader :: Text -> Header Int -> PD.Inline
 renderToCHeader title = \case
   Section _ path ->
-    PD.Span
-      ("", ["section"], [("toc-level", Text.pack (show (length path)))])
+    PD.Span ("", ["section"], section_attrs) $ do
       [ PD.Span ("", ["toc-number"], []) $ do
           [PD.Str (Text.intercalate "." $ map (Text.pack . show) path)],
-        PD.Span ("", ["toc-item"], []) [PD.Str title]
-      ]
+        PD.Span ("", ["toc-item"], []) $ do
+          [PD.Str title]
+        ]
+    where
+      section_attrs =
+        [("toc-level", Text.pack (show (length path)))]
   Appendix _ [] -> PD.Str ""
   Appendix _ path@(x : xs) ->
-    PD.Span
-      ( "",
-        ["appendix"],
-        [("toc-level", if null xs then "Appendix " <> ts else ts)]
-      )
+    PD.Span ("", ["appendix"], appendix_attrs) $ do
       [ PD.Span ("", ["toc-number"], []) $ do
           [PD.Str (Text.intercalate "." $ map (Text.pack . show) path)],
-        PD.Span ("", ["toc-item"], []) [PD.Str title]
-      ]
+        PD.Span ("", ["toc-item"], []) $ do
+          [PD.Str title]
+        ]
     where
+      appendix_attrs =
+        [("toc-level", if null xs then "Appendix " <> ts else ts)]
       ts =
         Text.intercalate "." $
           Text.singleton (['A' ..] List.!! (x - 1)) : map (Text.pack . show) xs
@@ -196,20 +188,15 @@ renderNeighbour ::
   (G.Context node Edge -> [PD.Inline])
 renderNeighbour (lbl, txt, blkId) (edges, prj) ctx =
   case prj3 <$> List.find (\(_, _, x) -> x == Next) (edges ctx) of
-    Nothing ->
-      [ PD.Span ("", [lbl], []) [PD.Str txt]
-      ]
-    Just j ->
-      [ PD.Span
-          ("", [lbl], [])
-          [ PD.Link
-              ("", [], [])
-              [PD.Str txt]
+    Nothing -> [PD.Span ("", [lbl], []) [PD.Str txt]]
+    Just j -> do
+      [ PD.Span ("", [lbl], []) $ do
+          [ PD.Link ("", [], []) [PD.Str txt] $ do
               ( "#src-" <> Text.pack (show j),
                 blkId <> ":" <> Text.pack (show j)
-              )
-          ]
-      ]
+                )
+            ]
+        ]
   where
     prj3 (i, j, _) = prj (i, j)
 
@@ -219,37 +206,34 @@ renderInclusions incls =
   | not (null items)
   ]
   where
-    items =
-      List.intersperse PD.Space $
-        [ PD.Link
-            ("", [], [])
-            [PD.Str lbl]
-            ("#src-" <> Text.pack (show j), lbl <> ":" <> Text.pack (show j))
-        | (j, lbl) <- List.sort incls
+    items = List.intersperse PD.Space $ do
+      (j, lbl) <- List.sort incls
+      [ PD.Link ("", [], []) [PD.Str lbl] $ do
+          ( "#src-" <> Text.pack (show j),
+            lbl <> ":" <> Text.pack (show j)
+            )
         ]
 
 renderCodeBlock :: Map Text G.Node -> Literate BlockName -> PD.Block
 renderCodeBlock heads lit =
-  PD.Div ("", ["src"], []) . (: []) . PD.Plain . concat $
-    [ case block of
-        Code t -> [PD.Str t]
-        Include _ (BlockName nm) ->
-          case Map.lookup nm heads of
-            Nothing ->
-              [ PD.Str "<<",
-                PD.Link ("", [], []) [PD.Str nm] ("#", ""),
-                PD.Str ">>"
-              ]
-            Just j ->
-              [ PD.Str "<<",
-                PD.Link
-                  ("", [], [])
-                  [PD.Str nm]
-                  ("#src-" <> Text.pack (show j), ""),
-                PD.Str ">>"
-              ]
-    | block <- litCode lit
-    ]
+  PD.Div ("", ["src"], []) . (: []) . PD.Plain $ do
+    litCodeChunks lit >>= \case
+      Code t -> [PD.Str t]
+      Include _ (BlockName nm) ->
+        case Map.lookup nm heads of
+          Nothing ->
+            [ PD.Str "<<",
+              PD.Link ("", [], []) [PD.Str nm] ("#", ""),
+              PD.Str ">>"
+            ]
+          Just j ->
+            [ PD.Str "<<",
+              PD.Link
+                ("", [], [])
+                [PD.Str nm]
+                ("#src-" <> Text.pack (show j), ""),
+              PD.Str ">>"
+            ]
 
 --
 -- HEADERS
@@ -326,7 +310,7 @@ headNodes :: Graph -> Map Text G.Node
 headNodes gr =
   Map.fromList
     [ (nm, i)
-    | (i, (nm, _)) <- G.labNodes gr,
+    | (i, (BlockName nm, _)) <- G.labNodes gr,
       null [() | (_, _, Next) <- G.inn gr i]
     ]
 
@@ -344,6 +328,6 @@ allLinks = fmap (bimap unMapMonoid unMapMonoid) . G.ufold fn mempty
               ]
         )
       where
-        (i, (lbl, _)) = G.labNode' ctx
+        (i, (BlockName lbl, _)) = G.labNode' ctx
         inn = [(i, j) | (j, _, Link) <- G.inn' ctx]
         out = [(j, i) | (_, j, Link) <- G.out' ctx]
