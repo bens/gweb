@@ -6,13 +6,13 @@ title: Link
       , tangleLanguage = "cee"
       }
   , Literate
-      (NodeID 0)
+      0
       ( "main" , [] , [] )
       [ Code "int main(void) {\n    "
       , Include
           4
           (Literate
-             (NodeID 1)
+             1
              ( "body" , [] , [] )
              [ Code "printf(\"Hello, %s!\\n\", \"World\");\nreturn 0;" ] :|
              [])

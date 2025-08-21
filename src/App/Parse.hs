@@ -13,9 +13,10 @@ import App.Types
     CodeChunk (..),
     Literate (..),
     Metadata (..),
-    NodeID (..),
     Tangle (..),
+    firstNode,
     litBlockName,
+    nextNode,
   )
 import Control.Monad.State.Strict (get, put, runState)
 import Data.Char (isAlphaNum)
@@ -73,7 +74,8 @@ parsePandoc doc = case extractInfo doc of
 extractInfo :: PD.Pandoc -> V (PD.Pandoc, Metadata, LiteratesTable)
 extractInfo doc@(PD.Pandoc raw_metadata _) = do
   metadata <- parseMetadata raw_metadata
-  let (doc', (_, code_accum)) = runState (walkM assignNodeID doc) (0, mempty)
+  let (doc', (_, code_accum)) =
+        runState (walkM assignNodeID doc) (firstNode, DL.empty)
   pure (doc', metadata, groupBy litBlockName (DL.apply code_accum []))
   where
     -- Assign a unique ID to each source code block, while also collecting the
@@ -81,9 +83,9 @@ extractInfo doc@(PD.Pandoc raw_metadata _) = do
     assignNodeID = \case
       PD.CodeBlock attr@(name, cls, kv) body | name /= "" -> do
         (i, acc) <- get
-        let acc' = DL.cons (Literate (NodeID i) attr (parseCodeBlock body)) acc
+        let acc' = DL.cons (Literate i attr (parseCodeBlock body)) acc
         let kv' = kv ++ [("literate-id", Text.pack (show i))]
-        put (succ i, acc')
+        put (nextNode i, acc')
         pure (PD.CodeBlock (name, cls, kv') body)
       pd_block -> pure pd_block
 
@@ -191,7 +193,7 @@ parseCodeBlock = matchChunks . simplifyChunks . toChunks
       x : xs -> x : simplifyChunks xs
       [] -> []
       where
-        excessBrackets n t = Text.replicate (n - 2) t
+        excessBrackets n = Text.replicate (n - 2)
 
     -- Match patterns of <<, name, >>. Also coalesces literals and converts LBra
     -- and RBra that don't match the pattern back into literal text.

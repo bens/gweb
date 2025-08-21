@@ -30,7 +30,14 @@ data Tangle = Tangle
 
 -- | A unique node ID in the graph of all blocks of code with names.
 newtype NodeID = NodeID Int
-  deriving (Eq, Ord, Show, Read)
+  deriving (Eq, Ord)
+  deriving (Show, Read) via Int
+
+firstNode :: NodeID
+firstNode = NodeID 0
+
+nextNode :: NodeID -> NodeID
+nextNode (NodeID i) = NodeID (succ i)
 
 -- * BlockName
 

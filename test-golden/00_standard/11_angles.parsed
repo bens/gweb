@@ -6,13 +6,13 @@ title: Tricky Angles
       , tangleLanguage = "cee"
       }
   , Literate
-      (NodeID 1)
+      1
       ( "main" , [] , [] )
       [ Code "int main(void) {\n    5 << 30 ? "
       , Include
           14
           (Literate
-             (NodeID 0)
+             0
              ( "hello" , [] , [] )
              [ Code "printf(\"Hello, <<>> %s!\\n\", \"World\")" ] :|
              [])

@@ -6,7 +6,7 @@ title: Unlinked Block
       , tangleLanguage = "cee"
       }
   , Literate
-      (NodeID 0)
+      0
       ( "main" , [] , [] )
       [ Code "int main(void) {\n    return 0;\n}" ] :|
       []

@@ -5,7 +5,7 @@ title: Empty Root
       , tanglePath = "main.c"
       , tangleLanguage = "cee"
       }
-  , Literate (NodeID 0) ( "main" , [] , [] ) [] :| []
+  , Literate 0 ( "main" , [] , [] ) [] :| []
   )
 ]
 ========

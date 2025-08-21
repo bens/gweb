@@ -6,7 +6,7 @@ title: Non-empty Root
       , tangleLanguage = "cee"
       }
   , Literate
-      (NodeID 0)
+      0
       ( "main" , [] , [] )
       [ Code "int main(void) {\n    return 0;\n}" ] :|
       []

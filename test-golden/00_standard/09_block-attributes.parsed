@@ -6,7 +6,7 @@ title: Block Attributes
       , tangleLanguage = "cee"
       }
   , Literate
-      (NodeID 0)
+      0
       ( "main" , [ "beta" ] , [ ( "lang" , "cee" ) ] )
       [ Code "int main(void) {\n    return 0;\n}" ] :|
       []

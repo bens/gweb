@@ -5,18 +5,22 @@
 
 module Main (main) where
 
-import qualified App.Abutting as App (Abut, flatten)
-import qualified App.Annotate as App (devDocs, userDocs)
-import qualified App.Config as Config (Config (..), Input (..), loadConfig)
+import App.Abutting (Abut)
+import qualified App.Abutting as Abut (flatten)
+import qualified App.Annotate as Ann (devDocs, userDocs)
+import App.Config (Config (..))
+import qualified App.Config as Cfg (Config (..), Input (..), loadConfig)
 import App.FixN (bothNE, cataNE)
-import qualified App.Graph as Graph (GraphGen, alg, runGraphGen, toDot)
-import qualified App.Options as Opt (Options (..), Output (..), parseOptions)
-import qualified App.Parse as App (Metadata (..), parse)
-import qualified App.Render as App (render)
-import qualified App.Tangle as Tangle (alg)
-import App.Types (Tangle (..))
+import App.Graph (GraphGen)
+import qualified App.Graph as Graph
+import qualified App.Options as Opt
+import qualified App.Parse as Parse
+import qualified App.Render as Render
+import qualified App.Tangle as Tangle
+import App.Types (BlockName, NodeID, Tangle (..))
+--
 import Control.Monad (when, (>=>))
-import Control.Monad.Except (MonadError (throwError), runExceptT)
+import Control.Monad.Except (MonadError (throwError), liftEither, runExceptT)
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Data.Foldable (for_, traverse_)
 import qualified Data.Map.Lazy as Map
@@ -40,50 +44,48 @@ main = do
     Right (Opt.Help msg) -> putStr msg
     Right (Opt.Run buildCfg outputs) -> do
       cfg <-
-        Config.loadConfig buildCfg >>= \case
+        Cfg.loadConfig buildCfg >>= \case
           Left err -> putStrLn err *> fail "Failed to read config file"
           Right ok -> pure ok
 
-      for_ (Config.configInputs cfg) $ \input' ->
+      for_ (Cfg.configInputs cfg) $ \input' ->
         (runExceptT >=> either Text.IO.putStrLn pure) $ do
-          (doc, metadata, roots) <-
-            readFile (Config.inputInPath input') >>= App.parse
+          t <- readFile (Cfg.inputInPath input')
+          (doc, metadata, roots) <- liftEither (Parse.parse t)
           tmpl <- getTemplate cfg "default"
 
           -- Compose two algebras into one, use them in a catamorphism.
           let alg = bothNE Graph.alg Tangle.alg
           let ( results ::
-                  [(Tangle, (Graph.GraphGen (First (Int, Text)), App.Abut))]
+                  [(Tangle, (GraphGen (First (NodeID, BlockName)), Abut))]
                 ) = [(root, cataNE alg fixn) | (root, fixn) <- roots]
 
-          let dir = takeDirectory (Config.inputInPath input')
+          let dir = takeDirectory (Cfg.inputInPath input')
           let graph = Graph.runGraphGen (traverse_ (fst . snd) results)
           let tangles = map (\(root, (_, tangled)) -> (root, tangled)) results
 
           when (Opt.OutputTangles `elem` outputs) $ do
             for_ tangles $ \(root, tangled) -> do
-              let path = Config.configTangleDir cfg </> tanglePath root
-              wr path (App.flatten tangled)
+              let path = Cfg.configTangleDir cfg </> tanglePath root
+              wr path (Abut.flatten tangled)
 
           when (Opt.OutputDevDocs `elem` outputs) $ do
             -- Use the graph of links and appends to generate docs
-            doc' <- App.devDocs dir metadata graph doc
-            html <- App.render tmpl (App.metadataTitle metadata) doc'
-            wr (Config.inputOutPathDev input') html
+            doc' <- Ann.devDocs dir metadata graph doc
+            html <- Render.render tmpl (Parse.metadataTitle metadata) doc'
+            wr (Cfg.inputOutPathDev input') html
 
           when (Opt.OutputUserDocs `elem` outputs) $ do
             -- Use the graph of links and appends to generate docs
-            doc' <- App.userDocs dir metadata graph doc
-            html <- App.render tmpl (App.metadataTitle metadata) doc'
-            wr (Config.inputOutPathUser input') html
+            doc' <- Ann.userDocs dir metadata graph doc
+            html <- Render.render tmpl (Parse.metadataTitle metadata) doc'
+            wr (Cfg.inputOutPathUser input') html
 
           when (Opt.OutputGraphViz `elem` outputs) $ do
-            wr (Config.inputOutPathGraphViz input') $ do
+            wr (Cfg.inputOutPathGraphViz input') $ do
               Graph.toDot graph
 
---------------------------------------------------------------------------------
--- HELPERS ---------------------------------------------------------------------
---------------------------------------------------------------------------------
+-- * Helpers
 
 readFile :: (MonadIO m) => FilePath -> m Text
 readFile = liftIO . Text.IO.readFile
@@ -94,8 +96,8 @@ wr path ltxt = liftIO $ do
   LText.IO.writeFile path ltxt
 
 getTemplate ::
-  (MonadError Text m) => Config.Config -> Text -> m (PD.Template LText.Text)
+  (MonadError Text m) => Config -> Text -> m (PD.Template LText.Text)
 getTemplate cfg nm =
-  case Map.lookup nm (Config.configTemplates cfg) of
+  case Map.lookup nm (Cfg.configTemplates cfg) of
     Nothing -> throwError ("template not found: " <> Text.pack (show nm))
     Just tmpl -> pure tmpl
