@@ -2,11 +2,13 @@
 <body>
 <div id="table-of-contents">
 <ul>
-<li><a href="#foo"><span class="section" toc-level="1"><span class="toc-number">1</span><span class="toc-item">Foo</span></span></a></li>
-<li><a href="#foo-the-first"><span class="section" toc-level="2"><span class="toc-number">1.1</span><span class="toc-item">Foo the First</span></span></a></li>
-<li><a href="#foo-the-second"><span class="section" toc-level="2"><span class="toc-number">1.2</span><span class="toc-item">Foo the Second</span></span></a></li>
-<li><a href="#bar"><span class="section" toc-level="1"><span class="toc-number">2</span><span class="toc-item">Bar</span></span></a></li>
-<li><a href="#introduction-to-bar"><span class="section" toc-level="2"><span class="toc-number">2.1</span><span class="toc-item">Introduction to Bar</span></span></a></li>
+<li><a href="#foo"><span class="section" toc-level="1"><span class="toc-number">1</span><span class="toc-item"> Foo</span></span></a></li>
+<li><a href="#foo-the-first"><span class="section" toc-level="2"><span class="toc-number">1.1</span><span class="toc-item"> Foo the First</span></span></a></li>
+<li><a href="#foo-the-second"><span class="section" toc-level="2"><span class="toc-number">1.2</span><span class="toc-item"> Foo the Second</span></span></a></li>
+<li><a href="#bar"><span class="section" toc-level="1"><span class="toc-number">2</span><span class="toc-item"> Bar</span></span></a></li>
+<li><a href="#introduction-to-bar"><span class="section" toc-level="2"><span class="toc-number">2.1</span><span class="toc-item"> Introduction to Bar</span></span></a></li>
+<li><a href="#awkwardness-in-greater-depth"><span class="appendix" toc-level="1"><span class="toc-number">Appendix A</span><span class="toc-item"> Awkwardness in Greater Depth</span></span></a></li>
+<li><a href="#some-awkward-situations-i-have-known"><span class="appendix" toc-level="2"><span class="toc-number">A.1</span><span class="toc-item"> Some Awkward Situations I Have Known</span></span></a></li>
 </ul>
 </div>
 <h1 id="foo"><span class="section-no">1</span> Foo</h1>
@@ -28,5 +30,9 @@
 <div class="dev-only">
 <p>This is for developers only.</p>
 </div>
+<h1 class="appendix" id="awkwardness-in-greater-depth">Appendix A: Awkwardness in Greater Depth</h1>
+<p>Some extra notes about awkward situations.</p>
+<h2 class="appendix" id="some-awkward-situations-i-have-known">A.1: Some Awkward Situations I Have Known</h2>
+<p>We need to know this.</p>
 </body>
 </html>

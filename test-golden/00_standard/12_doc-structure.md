@@ -30,3 +30,11 @@ Some extra remarks on the current state of the document.
 ::::: {.dev-only}
 This is for developers only.
 :::::
+
+# Awkwardness in Greater Depth {.appendix}
+
+Some extra notes about awkward situations.
+
+## Some Awkward Situations I Have Known
+
+We need to know this.

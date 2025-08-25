@@ -1,31 +1,62 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE ViewPatterns #-}
 
-module App.Annotate (Annotator, devDocs, userDocs) where
+module App.Annotate
+  ( Annotator,
+    devDocs,
+    userDocs,
+    test_headers,
+  )
+where
 
 import App.Diagram (diagrams)
 import App.Graph (Edge (..), Graph)
 import App.Parse (Literate (..), Metadata (..))
 import App.Types (BlockName (..), CodeChunk (..), MapMonoid (..), mapMonoid)
+import qualified Control.Lens as L
+import Control.Monad (when)
 import Control.Monad.Except (MonadError)
 import Control.Monad.IO.Class (MonadIO)
-import Control.Monad.State (MonadState, modify, runStateT, state)
+import Control.Monad.State (MonadState, execState, runStateT)
 import Data.Bifunctor (bimap)
+import Data.DList (DList)
+import qualified Data.DList as DL
 import Data.Foldable (fold, toList)
 import qualified Data.Graph.Inductive as G
 import qualified Data.List as List
+import Data.List.NonEmpty (NonEmpty ((:|)))
+import qualified Data.List.NonEmpty as NE
 import Data.Map.Lazy (Map)
 import qualified Data.Map.Lazy as Map
 import Data.Maybe (fromMaybe)
 import Data.Text (Text)
 import qualified Data.Text as Text
+import Test.Tasty (TestTree, testGroup)
+import Test.Tasty.HUnit (testCase, (@?=))
 import qualified Text.Pandoc.Definition as PD
 import Text.Pandoc.Walk (Walkable (query, walk, walkM))
 import Text.Read (readMaybe)
 
-type Annotator m =
-  FilePath -> Metadata -> Graph -> PD.Pandoc -> m PD.Pandoc
+data HeaderState a = InSection | InAppendix
+  deriving (Show)
+
+data Header a = Section Text (NonEmpty a) | Appendix Text (NonEmpty a)
+  deriving (Eq, Show)
+
+data Headers a = Headers
+  { _headerState :: HeaderState a,
+    _headerSectionRPath :: [a],
+    _headerAppendixRPath :: [a],
+    _headerAccum :: DList (Header a, Text)
+  }
+  deriving (Show)
+
+L.makeLenses ''Headers
+
+type Annotator m = FilePath -> Metadata -> Graph -> PD.Pandoc -> m PD.Pandoc
 
 devDocs :: (MonadError Text m, MonadIO m) => Annotator m
 devDocs dir metadata gr doc = do
@@ -71,11 +102,8 @@ annotate _dir _metadata gr =
       fromMaybe (PD.CodeBlock (noLitId attr) x) <$> annotateCodeBlock gr attr x
     PD.Header lvl (ident, cls, _kv) title -> do
       -- Collect all the headers to build the table of contents.
-      hdr <- state (nextSection 1 succ ident cls lvl)
-      modify (addHeader hdr title)
+      hdr <- addHeader (1, succ) (ident, cls, lvl) (extractText title)
       pure (renderBodyHeader title hdr)
-    -- PD.Div (ident, cls, kv) body
-    --   | "review-remark" `elem` cls -> undefined
     blk -> pure blk
   where
     noLitId (blkId, cls, kv) =
@@ -115,12 +143,12 @@ annotateTableOfContents :: Headers Int -> PD.Pandoc -> PD.Pandoc
 annotateTableOfContents headers (PD.Pandoc meta doc) =
   PD.Pandoc meta (toc ++ doc)
   where
-    tocInfo = filter (trim 2) (headerAccum headers [])
+    tocInfo = filter (trim 2) (getHeaders headers)
     toc = [PD.Div ("table-of-contents", [], []) [PD.BulletList (map f tocInfo)]]
       where
         f (hdr, nm) =
           [ PD.Plain
-              [ PD.Link ("", [], []) [renderToCHeader nm hdr] $ do
+              [ PD.Link ("", [], []) [renderContentsHeader nm hdr] $ do
                   ("#" <> target hdr, "")
               ]
           ]
@@ -134,46 +162,44 @@ annotateTableOfContents headers (PD.Pandoc meta doc) =
 renderBodyHeader :: [PD.Inline] -> Header Int -> PD.Block
 renderBodyHeader title = \case
   Section ident path ->
-    PD.Header (length path) (ident, [], []) $ do
+    PD.Header (NE.length path) (ident, [], []) $ do
       leader : PD.Space : title
     where
       leader = PD.Span ("", ["section-no"], []) $ do
-        [PD.Str (Text.intercalate "." $ map (Text.pack . show) path)]
-  Appendix _ [] -> PD.Plain [PD.Str ""]
-  Appendix ident (x : xs) ->
+        [PD.Str (Text.intercalate "." (map showText (NE.toList path)))]
+  Appendix ident (x :| xs) ->
     PD.Header (length xs + 1) (ident, ["appendix"], []) $ do
       leader : PD.Str ":" : PD.Space : title
     where
       leader = PD.Str (if null xs then "Appendix " <> ts else ts)
-      ts = Text.intercalate "." $ do
-        Text.singleton (['A' ..] List.!! (x - 1)) : map (Text.pack . show) xs
+      ts = Text.intercalate "." (letters List.!! (x - 1) : map showText xs)
+  where
+    showText = Text.pack . show
+    letters = concat (iterate (zipWith (<>) single_letters) single_letters)
+    single_letters = map Text.singleton ['A' .. 'Z']
 
-renderToCHeader :: Text -> Header Int -> PD.Inline
-renderToCHeader title = \case
+renderContentsHeader :: Text -> Header Int -> PD.Inline
+renderContentsHeader title = \case
   Section _ path ->
-    PD.Span ("", ["section"], section_attrs) $ do
+    PD.Span ("", ["section"], [("toc-level", showText (NE.length path))]) $ do
       [ PD.Span ("", ["toc-number"], []) $ do
-          [PD.Str (Text.intercalate "." $ map (Text.pack . show) path)],
+          [PD.Str (Text.intercalate "." (map showText (NE.toList path)))],
         PD.Span ("", ["toc-item"], []) $ do
-          [PD.Str title]
+          [PD.Space, PD.Str title]
+        ]
+  Appendix _ path@(x :| xs) ->
+    PD.Span ("", ["appendix"], [("toc-level", showText (NE.length path))]) $ do
+      [ PD.Span ("", ["toc-number"], []) $ do
+          [PD.Str (if null xs then "Appendix " <> ts else ts)],
+        PD.Span ("", ["toc-item"], []) $ do
+          [PD.Space, PD.Str title]
         ]
     where
-      section_attrs =
-        [("toc-level", Text.pack (show (length path)))]
-  Appendix _ [] -> PD.Str ""
-  Appendix _ path@(x : xs) ->
-    PD.Span ("", ["appendix"], appendix_attrs) $ do
-      [ PD.Span ("", ["toc-number"], []) $ do
-          [PD.Str (Text.intercalate "." $ map (Text.pack . show) path)],
-        PD.Span ("", ["toc-item"], []) $ do
-          [PD.Str title]
-        ]
-    where
-      appendix_attrs =
-        [("toc-level", if null xs then "Appendix " <> ts else ts)]
-      ts =
-        Text.intercalate "." $
-          Text.singleton (['A' ..] List.!! (x - 1)) : map (Text.pack . show) xs
+      ts = Text.intercalate "." (letters List.!! (x - 1) : map showText xs)
+  where
+    showText = Text.pack . show
+    letters = concat (iterate (zipWith (<>) single_letters) single_letters)
+    single_letters = map Text.singleton ['A' .. 'Z']
 
 renderTitle :: Text -> PD.Inline
 renderTitle blkId = PD.Span ("", ["title"], []) [PD.Str blkId]
@@ -236,61 +262,89 @@ renderCodeBlock heads lit =
 -- HEADERS
 --
 
-data HeaderState a
-  = InSection [a] [a]
-  | InAppendix [a] [a]
-  deriving (Show)
-
-data Header a
-  = Section Text [a]
-  | Appendix Text [a]
-  deriving (Show)
-
-data Headers a = Headers
-  { headerState :: HeaderState a,
-    headerAccum :: [(Header a, Text)] -> [(Header a, Text)]
-  }
+test_headers :: TestTree
+test_headers = testGroup "App.Annotate (Headers)" $ do
+  [ testCase "empty" $
+      fn [] @?= [],
+    testCase "one section" $
+      fn [(("x", [], 1), "Foo")]
+        @?= [(Section "x" (NE.fromList [1]), "Foo")],
+    testCase "one appendix" $
+      fn [(("x", ["appendix"], 1), "Foo")]
+        @?= [(Appendix "x" (NE.fromList [1]), "Foo")],
+    testCase "two sections" $
+      fn [(("x", [], 1), "Foo"), (("y", [], 2), "Bar")]
+        @?= [ (Section "x" (NE.fromList [1]), "Foo"),
+              (Section "y" (NE.fromList [1, 1]), "Bar")
+            ],
+    testCase "two appendices" $
+      fn [(("x", ["appendix"], 1), "Foo"), (("y", [], 2), "Bar")]
+        @?= [ (Appendix "x" (NE.fromList [1]), "Foo"),
+              (Appendix "y" (NE.fromList [1, 1]), "Bar")
+            ],
+    testCase "two sections, jump" $
+      fn [(("x", [], 1), "Foo"), (("y", [], 3), "Bar")]
+        @?= [ (Section "x" (NE.fromList [1]), "Foo"),
+              (Section "y" (NE.fromList [1, 1, 1]), "Bar")
+            ],
+    testCase "three sections, same level" $
+      fn [(("x", [], 1), "Foo"), (("y", [], 2), "Bar"), (("z", [], 2), "Quux")]
+        @?= [ (Section "x" (1 :| []), "Foo"),
+              (Section "y" (1 :| [1]), "Bar"),
+              (Section "z" (1 :| [2]), "Quux")
+            ],
+    testCase "three sections, back jump" $
+      fn [(("x", [], 1), "Foo"), (("y", [], 2), "Bar"), (("z", [], 1), "Quux")]
+        @?= [ (Section "x" (1 :| []), "Foo"),
+              (Section "y" (1 :| [1]), "Bar"),
+              (Section "z" (2 :| []), "Quux")
+            ]
+    ]
+  where
+    fn :: [((Text, [Text], Int), Text)] -> [(Header Int, Text)]
+    fn hs = getHeaders . flip execState initHeaders $ do
+      mapM_ (uncurry (addHeader (1, succ))) hs
 
 initHeaders :: Headers a
-initHeaders = Headers (InSection [] []) id
+initHeaders = Headers InSection [] [] DL.empty
 
-nextSection ::
-  a -> (a -> a) -> Text -> [Text] -> Int -> Headers a -> (Header a, Headers a)
-nextSection initA nextA ident classes lvl hdrs =
-  (path, hdrs {headerState = st''})
+getHeaders :: Headers a -> [(Header a, Text)]
+getHeaders hs = DL.apply (L.view headerAccum hs) []
+
+-- Add a header to the
+addHeader ::
+  (MonadState (Headers a) m) =>
+  (a, a -> a) -> (Text, [Text], Int) -> Text -> m (Header a)
+addHeader (initA, nextA) (ident, classes, lvl) name = do
+  when (lvl <= 1) $ do
+    -- Only change the type at the top level.
+    if "appendix" `elem` classes
+      then L.assign headerState InAppendix
+      else L.assign headerState InSection
+  curr_state <- L.use headerState
+  let rpath_ptr :: L.Lens' (Headers a) [a]
+      rpath_ptr = case curr_state of
+        InSection -> headerSectionRPath
+        InAppendix -> headerAppendixRPath
+  rpath' <- L.uses rpath_ptr incrHeader
+  L.assign rpath_ptr rpath'
+  -- incrHeader should ensure that rpath' is always non-empty
+  let hdr = case (NE.nonEmpty (reverse rpath'), curr_state) of
+        (Nothing, _) -> error "empty heading path!"
+        (Just path, InSection) -> Section ident path
+        (Just path, InAppendix) -> Appendix ident path
+  L.modifying headerAccum (`DL.snoc` (hdr, name))
+  pure hdr
   where
-    st'
-      | lvl == 1 = setState paths
-      | otherwise = headerState hdrs
-    (path, st'') = updateSections (incrHeader initA nextA lvl) st'
-    paths = case headerState hdrs of
-      InSection s a -> (s, a)
-      InAppendix s a -> (s, a)
-    setState (s, a)
-      | "appendix" `elem` classes = InAppendix s a
-      | otherwise = InSection s a
-    updateSections :: ([a] -> [a]) -> HeaderState a -> (Header a, HeaderState a)
-    updateSections f = \case
-      InSection s a -> (Section ident (reverse (f s)), InSection (f s) a)
-      InAppendix s a -> (Appendix ident (reverse (f a)), InAppendix s (f a))
-
-addHeader :: Header a -> [PD.Inline] -> Headers a -> Headers a
-addHeader hdr nm hdrs =
-  hdrs
-    { headerAccum = headerAccum hdrs . ((hdr, extractText nm) :)
-    }
-
-incrHeader :: a -> (a -> a) -> Int -> [a] -> [a]
-incrHeader initA nextA lvl hdr =
-  case compare lvl' lvl of
-    LT -> replicate (lvl - lvl') initA ++ hdr
-    EQ -> incr hdr
-    GT -> incr (drop (lvl' - lvl) hdr)
-  where
-    lvl' = length hdr
-    incr = \case
-      [] -> []
-      x : xs -> nextA x : xs
+    incrHeader path@(length -> lvl') =
+      case compare lvl' lvl of
+        LT -> replicate (lvl - lvl') initA ++ path
+        EQ -> incr path
+        GT -> incr (drop (lvl' - lvl) path)
+      where
+        incr = \case
+          [] -> []
+          x : xs -> nextA x : xs
 
 --
 -- HELPERS

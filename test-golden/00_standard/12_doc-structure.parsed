@@ -152,4 +152,54 @@ Pandoc
           , Str "only."
           ]
       ]
+  , Header
+      1
+      ( "awkwardness-in-greater-depth" , [ "appendix" ] , [] )
+      [ Str "Awkwardness"
+      , Space
+      , Str "in"
+      , Space
+      , Str "Greater"
+      , Space
+      , Str "Depth"
+      ]
+  , Para
+      [ Str "Some"
+      , Space
+      , Str "extra"
+      , Space
+      , Str "notes"
+      , Space
+      , Str "about"
+      , Space
+      , Str "awkward"
+      , Space
+      , Str "situations."
+      ]
+  , Header
+      2
+      ( "some-awkward-situations-i-have-known" , [] , [] )
+      [ Str "Some"
+      , Space
+      , Str "Awkward"
+      , Space
+      , Str "Situations"
+      , Space
+      , Str "I"
+      , Space
+      , Str "Have"
+      , Space
+      , Str "Known"
+      ]
+  , Para
+      [ Str "We"
+      , Space
+      , Str "need"
+      , Space
+      , Str "to"
+      , Space
+      , Str "know"
+      , Space
+      , Str "this."
+      ]
   ]

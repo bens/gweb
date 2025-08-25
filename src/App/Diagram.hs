@@ -98,11 +98,11 @@ gnuplot ::
 gnuplot dir tables attr@(ident, cls, kw) body = shortcircuiting $ do
   let tableNames :: [GnuplotDataSourceRef]
       tableNames =
-        [ FileDataSource (Text.drop 5 k) path
-        | (k, path) <- kw,
-          "file-" `Text.isPrefixOf` k
-        ]
-          ++ [TableDataSource nm | ("table", nm) <- kw]
+        kw >>= \case
+          (k, v)
+            | ("file-", var) <- Text.splitAt 5 k -> [FileDataSource var v]
+            | k == "table" -> [TableDataSource v]
+            | otherwise -> []
 
   dataBlocks <- case traverse mkDataBlock tableNames of
     Failure errors ->

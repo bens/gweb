@@ -17,7 +17,7 @@ Pandoc
                     [ Span
                         ( "" , [ "section" ] , [ ( "toc-level" , "1" ) ] )
                         [ Span ( "" , [ "toc-number" ] , [] ) [ Str "1" ]
-                        , Span ( "" , [ "toc-item" ] , [] ) [ Str "Foo" ]
+                        , Span ( "" , [ "toc-item" ] , [] ) [ Space , Str "Foo" ]
                         ]
                     ]
                     ( "#foo" , "" )
@@ -29,7 +29,7 @@ Pandoc
                     [ Span
                         ( "" , [ "section" ] , [ ( "toc-level" , "2" ) ] )
                         [ Span ( "" , [ "toc-number" ] , [] ) [ Str "1.1" ]
-                        , Span ( "" , [ "toc-item" ] , [] ) [ Str "Foo the First" ]
+                        , Span ( "" , [ "toc-item" ] , [] ) [ Space , Str "Foo the First" ]
                         ]
                     ]
                     ( "#foo-the-first" , "" )
@@ -41,7 +41,8 @@ Pandoc
                     [ Span
                         ( "" , [ "section" ] , [ ( "toc-level" , "2" ) ] )
                         [ Span ( "" , [ "toc-number" ] , [] ) [ Str "1.2" ]
-                        , Span ( "" , [ "toc-item" ] , [] ) [ Str "Foo the Second" ]
+                        , Span
+                            ( "" , [ "toc-item" ] , [] ) [ Space , Str "Foo the Second" ]
                         ]
                     ]
                     ( "#foo-the-second" , "" )
@@ -53,7 +54,7 @@ Pandoc
                     [ Span
                         ( "" , [ "section" ] , [ ( "toc-level" , "1" ) ] )
                         [ Span ( "" , [ "toc-number" ] , [] ) [ Str "2" ]
-                        , Span ( "" , [ "toc-item" ] , [] ) [ Str "Bar" ]
+                        , Span ( "" , [ "toc-item" ] , [] ) [ Space , Str "Bar" ]
                         ]
                     ]
                     ( "#bar" , "" )
@@ -65,10 +66,39 @@ Pandoc
                     [ Span
                         ( "" , [ "section" ] , [ ( "toc-level" , "2" ) ] )
                         [ Span ( "" , [ "toc-number" ] , [] ) [ Str "2.1" ]
-                        , Span ( "" , [ "toc-item" ] , [] ) [ Str "Introduction to Bar" ]
+                        , Span
+                            ( "" , [ "toc-item" ] , [] ) [ Space , Str "Introduction to Bar" ]
                         ]
                     ]
                     ( "#introduction-to-bar" , "" )
+                ]
+            ]
+          , [ Plain
+                [ Link
+                    ( "" , [] , [] )
+                    [ Span
+                        ( "" , [ "appendix" ] , [ ( "toc-level" , "1" ) ] )
+                        [ Span ( "" , [ "toc-number" ] , [] ) [ Str "Appendix A" ]
+                        , Span
+                            ( "" , [ "toc-item" ] , [] )
+                            [ Space , Str "Awkwardness in Greater Depth" ]
+                        ]
+                    ]
+                    ( "#awkwardness-in-greater-depth" , "" )
+                ]
+            ]
+          , [ Plain
+                [ Link
+                    ( "" , [] , [] )
+                    [ Span
+                        ( "" , [ "appendix" ] , [ ( "toc-level" , "2" ) ] )
+                        [ Span ( "" , [ "toc-number" ] , [] ) [ Str "A.1" ]
+                        , Span
+                            ( "" , [ "toc-item" ] , [] )
+                            [ Space , Str "Some Awkward Situations I Have Known" ]
+                        ]
+                    ]
+                    ( "#some-awkward-situations-i-have-known" , "" )
                 ]
             ]
           ]
@@ -248,5 +278,61 @@ Pandoc
           , Space
           , Str "only."
           ]
+      ]
+  , Header
+      1
+      ( "awkwardness-in-greater-depth" , [ "appendix" ] , [] )
+      [ Str "Appendix A"
+      , Str ":"
+      , Space
+      , Str "Awkwardness"
+      , Space
+      , Str "in"
+      , Space
+      , Str "Greater"
+      , Space
+      , Str "Depth"
+      ]
+  , Para
+      [ Str "Some"
+      , Space
+      , Str "extra"
+      , Space
+      , Str "notes"
+      , Space
+      , Str "about"
+      , Space
+      , Str "awkward"
+      , Space
+      , Str "situations."
+      ]
+  , Header
+      2
+      ( "some-awkward-situations-i-have-known" , [ "appendix" ] , [] )
+      [ Str "A.1"
+      , Str ":"
+      , Space
+      , Str "Some"
+      , Space
+      , Str "Awkward"
+      , Space
+      , Str "Situations"
+      , Space
+      , Str "I"
+      , Space
+      , Str "Have"
+      , Space
+      , Str "Known"
+      ]
+  , Para
+      [ Str "We"
+      , Space
+      , Str "need"
+      , Space
+      , Str "to"
+      , Space
+      , Str "know"
+      , Space
+      , Str "this."
       ]
   ]
