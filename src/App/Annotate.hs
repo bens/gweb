@@ -2,7 +2,7 @@
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedStrings #-}
 
-module App.Annotate (devDocs, userDocs) where
+module App.Annotate (Annotator, devDocs, userDocs) where
 
 import App.Diagram (diagrams)
 import App.Graph (Edge (..), Graph)
@@ -24,9 +24,10 @@ import qualified Text.Pandoc.Definition as PD
 import Text.Pandoc.Walk (Walkable (query, walk, walkM))
 import Text.Read (readMaybe)
 
-devDocs ::
-  (MonadError Text m, MonadIO m) =>
-  (FilePath -> Metadata -> Graph -> PD.Pandoc -> m PD.Pandoc)
+type Annotator m =
+  FilePath -> Metadata -> Graph -> PD.Pandoc -> m PD.Pandoc
+
+devDocs :: (MonadError Text m, MonadIO m) => Annotator m
 devDocs dir metadata gr doc = do
   let annReview = \case
         PD.Div (ident, cls, kv) body
@@ -39,16 +40,14 @@ devDocs dir metadata gr doc = do
                   ++ body
         blk -> blk
   (doc_annotated, headers) <-
-    runStateT (annotate gr . walk annReview $ doc) initHeaders
+    runStateT (annotate dir metadata gr . walk annReview $ doc) initHeaders
   doc_annotated_toc <-
     if metadataGenToC metadata
       then pure (annotateTableOfContents headers doc_annotated)
       else pure doc_annotated
   diagrams dir doc_annotated_toc
 
-userDocs ::
-  (MonadError Text m, MonadIO m) =>
-  (FilePath -> Metadata -> Graph -> PD.Pandoc -> m PD.Pandoc)
+userDocs :: (MonadError Text m, MonadIO m) => Annotator m
 userDocs dir metadata gr doc = do
   let annReview = \case
         PD.Div (_, cls, _) _
@@ -56,17 +55,15 @@ userDocs dir metadata gr doc = do
           | "review-remark" `elem` cls -> PD.Plain []
         blk -> blk
   (doc_annotated, headers) <-
-    runStateT (annotate gr . walk annReview $ doc) initHeaders
+    runStateT (annotate dir metadata gr . walk annReview $ doc) initHeaders
   doc_annotated_toc <-
     if metadataGenToC metadata
       then pure (annotateTableOfContents headers doc_annotated)
       else pure doc_annotated
   diagrams dir doc_annotated_toc
 
-annotate ::
-  (MonadError Text m, MonadState (Headers Int) m) =>
-  (Graph -> PD.Pandoc -> m PD.Pandoc)
-annotate gr =
+annotate :: (MonadError Text m, MonadState (Headers Int) m) => Annotator m
+annotate _dir _metadata gr =
   walkM $ \case
     PD.CodeBlock attr x ->
       -- If this codeblock isn't a literate programming codeblock then leave it

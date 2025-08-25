@@ -1,11 +1,13 @@
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedStrings #-}
 
-module App.Abutting (Abut, abut, wrap, indent, flatten) where
+module App.Abutting (Abut, abut, wrap, indent, flatten, test_abutting) where
 
 import Data.DList (DList)
 import qualified Data.DList as DL
 import qualified Data.Text.Lazy as LText
+import Test.Tasty (TestTree, testGroup)
+import Test.Tasty.HUnit (testCase, (@?=))
 
 data Line = Line
   { lineIndent :: !Int,
@@ -16,6 +18,41 @@ data Line = Line
 -- | The 'Semigroup' instance on lines does the abutting.
 instance Semigroup Line where
   Line i a <> Line _ b = Line i (a <> b)
+
+test_abutting :: TestTree
+test_abutting = testGroup "App.Abutting" $ do
+  [ testCase "empty" $
+      flatten (wrap "") @?= "",
+    testCase "one line" $
+      flatten (wrap "foo") @?= "foo\n",
+    testCase "two lines #1" $
+      flatten (wrap "foo\nbar")
+        @?= "foo\nbar\n",
+    testCase "two lines #2" $
+      flatten
+        (mconcat [wrap "foo", wrap "bar"])
+        @?= "foo\nbar\n",
+    testCase "two lines #3" $
+      flatten
+        (mconcat [wrap "foo\nbar\n"])
+        @?= "foo\nbar\n\n",
+    testCase "indent #1" $
+      flatten
+        (indent 4 (wrap "foo\nbar"))
+        @?= "    foo\n    bar\n",
+    testCase "indent #2" $
+      flatten
+        (wrap "foo" <> indent 4 (wrap "bar\nquux"))
+        @?= "foo\n    bar\n    quux\n",
+    testCase "abut #1" $
+      flatten
+        (wrap "foo" `abut` wrap "bar\nquux")
+        @?= "foobar\nquux\n",
+    testCase "abut #2" $
+      flatten
+        (wrap "foo" `abut` indent 4 (wrap "bar\nquux"))
+        @?= "foobar\n    quux\n"
+    ]
 
 -- | For collecting lines of lazy text together, where the last line of one
 -- segment can be joined to the first line of another segment. Also, collections
