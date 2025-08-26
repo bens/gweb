@@ -126,11 +126,7 @@ Pandoc
       ( "foo-the-first" , [] , [] )
       [ Span ( "" , [ "section-no" ] , [] ) [ Str "1.1" ]
       , Space
-      , Str "Foo"
-      , Space
-      , Str "the"
-      , Space
-      , Str "First"
+      , Str "Foo the First"
       ]
   , Para
       [ Str "We"
@@ -154,11 +150,7 @@ Pandoc
       ( "foo-the-second" , [] , [] )
       [ Span ( "" , [ "section-no" ] , [] ) [ Str "1.2" ]
       , Space
-      , Str "Foo"
-      , Space
-      , Str "the"
-      , Space
-      , Str "Second"
+      , Str "Foo the Second"
       ]
   , Para
       [ Str "We"
@@ -211,11 +203,7 @@ Pandoc
       ( "introduction-to-bar" , [] , [] )
       [ Span ( "" , [ "section-no" ] , [] ) [ Str "2.1" ]
       , Space
-      , Str "Introduction"
-      , Space
-      , Str "to"
-      , Space
-      , Str "Bar"
+      , Str "Introduction to Bar"
       ]
   , Header
       3
@@ -225,21 +213,7 @@ Pandoc
       )
       [ Span ( "" , [ "section-no" ] , [] ) [ Str "2.1.1" ]
       , Space
-      , Str "The"
-      , Space
-      , Str "Thermodynamics"
-      , Space
-      , Str "of"
-      , Space
-      , Str "Glass"
-      , Space
-      , Str "Blowing"
-      , Space
-      , Str "in"
-      , Space
-      , Str "Awkward"
-      , Space
-      , Str "Situations"
+      , Str "The Thermodynamics of Glass Blowing in Awkward Situations"
       ]
   , Plain []
   , Header
@@ -248,13 +222,7 @@ Pandoc
       [ Str "Appendix A"
       , Str ":"
       , Space
-      , Str "Awkwardness"
-      , Space
-      , Str "in"
-      , Space
-      , Str "Greater"
-      , Space
-      , Str "Depth"
+      , Str "Awkwardness in Greater Depth"
       ]
   , Para
       [ Str "Some"
@@ -275,17 +243,7 @@ Pandoc
       [ Str "A.1"
       , Str ":"
       , Space
-      , Str "Some"
-      , Space
-      , Str "Awkward"
-      , Space
-      , Str "Situations"
-      , Space
-      , Str "I"
-      , Space
-      , Str "Have"
-      , Space
-      , Str "Known"
+      , Str "Some Awkward Situations I Have Known"
       ]
   , Para
       [ Str "We"
