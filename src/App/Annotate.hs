@@ -4,6 +4,11 @@
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE ViewPatterns #-}
 
+-- | This module is a bit messy, it does the actual updates to the document
+-- structure to reflect the derived information in the output.
+--
+-- I have some ideas for cleaning it up and reducing the number of traversals,
+-- but at least it's good to have something that works to improve later.
 module App.Annotate (Annotator, devDocs, userDocs) where
 
 import App.Annotate.Headers
@@ -37,8 +42,10 @@ import Text.Read (readMaybe)
 
 type Annotator m = FilePath -> Metadata -> Graph -> PD.Pandoc -> m PD.Pandoc
 
+-- | Prepare document to produce developer documentation.
 devDocs :: (MonadError Text m, MonadIO m) => Annotator m
 devDocs dir metadata gr doc = do
+  -- Include review-remark and dev-only blocks in developer docs.
   let annReview = \case
         PD.Div (ident, cls, kv) body
           | "review-remark" `elem` cls ->
@@ -49,48 +56,56 @@ devDocs dir metadata gr doc = do
                   ]
                   ++ body
         blk -> blk
+  -- Collect header information for table of contents and decorate code blocks.
   (doc_annotated, headers) <-
     runStateT (annotate dir metadata gr . walk annReview $ doc) mempty
+  -- Add a table of contents if requested.
   doc_annotated_toc <-
     if metadataGenToC metadata
       then pure (annotateTableOfContents headers doc_annotated)
       else pure doc_annotated
+  -- Process any diagram code blocks with external tools.
   diagrams dir doc_annotated_toc
 
+-- | Prepare document to produce user documentation.
 userDocs :: (MonadError Text m, MonadIO m) => Annotator m
 userDocs dir metadata gr doc = do
+  -- Exclude review-remark and dev-only blocks in developer docs.
   let annReview = \case
         PD.Div (_, cls, _) _
           | "dev-only" `elem` cls -> PD.Plain []
           | "review-remark" `elem` cls -> PD.Plain []
         blk -> blk
+  -- Collect header information for table of contents and decorate code blocks.
   (doc_annotated, headers) <-
     runStateT (annotate dir metadata gr . walk annReview $ doc) mempty
+  -- Add a table of contents if requested.
   doc_annotated_toc <-
     if metadataGenToC metadata
       then pure (annotateTableOfContents headers doc_annotated)
       else pure doc_annotated
+  -- Process any diagram code blocks with external tools.
   diagrams dir doc_annotated_toc
 
+-- | Collect header information for the document structure and add linking
+-- decorations to code blocks that take part in literate programming.
 annotate ::
   (MonadError Text m, MonadState (Headers (Text, Text)) m) =>
   Annotator m
 annotate _dir _metadata gr =
   walkM $ \case
-    PD.CodeBlock attr x
+    blk@(PD.CodeBlock attr x)
       | Just (ident, ctx) <- matchCodeBlock gr attr ->
-          -- If this codeblock isn't a literate programming codeblock then leave
-          -- it unchanged.
-          pure (annotateCodeBlock gr ident ctx attr x)
+          pure (annotateCodeBlock gr ident ctx attr blk)
       | otherwise -> pure (PD.CodeBlock (noLitId attr) x)
+    -- Collect all the headers to build the table of contents.
     PD.Header lvl (ident, classes, _kv) title -> do
-      -- Collect all the headers to build the table of contents.
       if lvl <= 1 && "appendix" `elem` classes
         then modify (<> appendix (ident, (extractText title)))
         else modify (<> section (ident, (extractText title)) lvl)
       gets getLastHeader >>= \case
         Just hdr -> pure (renderBodyHeader hdr)
-        Nothing -> error "impossible"
+        Nothing -> error "impossible, just added a header"
     blk -> pure blk
   where
     noLitId (blkId, cls, kv) =
@@ -111,9 +126,8 @@ annotateCodeBlock ::
   Text ->
   G.Context (BlockName, Literate BlockName) Edge ->
   PD.Attr ->
-  Text ->
-  PD.Block
-annotateCodeBlock gr ident ctx (blkId, cls, _kv) _body =
+  (PD.Block -> PD.Block)
+annotateCodeBlock gr ident ctx (blkId, cls, _kv) _orig =
   PD.Div ("src-" <> ident, "literate" : cls, []) $
     [ PD.Div ("", ["header"], []) $
         ( PD.Plain . concat $
