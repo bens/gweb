@@ -227,3 +227,11 @@ Support for parameterised blocks is planned, enabling more flexible reuse of cod
 ## Syntax highlighting
 
 Syntax highlighting is also on the roadmap. The challenge is ensuring accuracy for languages with context-dependent syntax. Ideally, highlighting would be applied after tangling, then mapped back to the originating code blocks in the documentation.
+
+## LaTeX output
+
+It would be good to support output for printing via LaTeX, as well as HTML.
+
+## Djot
+
+[Djot](https://djot.net/) seems like a sensible rethinking of Markdown, without any specific allowances for HTML which would help with `gweb` supporting other formats equally.

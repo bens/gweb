@@ -82,6 +82,7 @@ library
     exposed-modules:
         App.Abutting
         App.Annotate
+        App.Annotate.Headers
         App.Config
         App.Diagram
         App.FixN

@@ -24,7 +24,8 @@ import App.Types (BlockName (..), CodeChunk (..), NodeID (..), litBlockName)
 import Control.Monad.State.Strict (State, execState, modify)
 import Data.Foldable (traverse_)
 import qualified Data.Graph.Inductive as G
-import Data.List.NonEmpty (NonEmpty ((:|)))
+import Data.List.NonEmpty (NonEmpty)
+import qualified Data.List.NonEmpty as NE
 import Data.Semigroup (First (First), sconcat)
 import qualified Data.Text.Lazy as LText
 import Data.Traversable (for)
@@ -97,7 +98,7 @@ alg lits = do
 -- | Zip the elements of a list with the previous element, or with 'Nothing' for
 -- the first value.
 zipPrevNE :: NonEmpty a -> NonEmpty (a, Maybe a)
-zipPrevNE (x :| xs) = (x, Nothing) :| zip xs (map Just (x : xs))
+zipPrevNE xs = NE.zip xs (NE.cons Nothing (fmap Just xs))
 
 toDot :: Graph -> LText.Text
 toDot gr =

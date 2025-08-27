@@ -14,14 +14,18 @@ module App.Annotate.Headers
 
     -- * Tests
     test_getHeaders,
-    hprop_identity,
-    hprop_associativity,
+    hprop_monoid,
+    hprop_foldable,
+    hprop_traversable,
     hprop_getLastHeader,
   )
 where
 
+import Control.Monad.State (State, modify, runState)
+import Data.Foldable (fold)
 import Data.List.NonEmpty (NonEmpty ((:|)))
 import qualified Data.List.NonEmpty as NE
+import Data.Monoid (Dual (Dual, getDual))
 import Data.Text (Text)
 import Data.Tree (Tree)
 import qualified Data.Tree as Tree
@@ -41,6 +45,16 @@ instance Functor Header where
   fmap f = \case
     Section x path -> Section (f x) path
     Appendix x path -> Appendix (f x) path
+
+instance Foldable Header where
+  foldMap f = \case
+    Section x _path -> f x
+    Appendix x _path -> f x
+
+instance Traversable Header where
+  traverse f = \case
+    Section x path -> Section <$> f x <*> pure path
+    Appendix x path -> Appendix <$> f x <*> pure path
 
 -- * Headers
 
@@ -72,6 +86,17 @@ instance Monoid (Headers a) where
   mempty = Headers [] []
   mappend = (<>)
 
+hprop_monoid :: Hh.Property
+hprop_monoid = Hh.property $ do
+  as <- Hh.forAll (fold <$> Hh.list (Hh.linear 0 10) genHeader)
+  bs <- Hh.forAll (fold <$> Hh.list (Hh.linear 0 10) genHeader)
+  cs <- Hh.forAll (fold <$> Hh.list (Hh.linear 0 10) genHeader)
+  -- Associativity
+  getHeaders ((as <> bs) <> cs) Hh.=== getHeaders (as <> (bs <> cs))
+  -- Identity
+  getHeaders (mempty <> as) Hh.=== getHeaders as
+  getHeaders (as <> mempty) Hh.=== getHeaders as
+
 instance (Show a) => Show (Headers a) where
   showsPrec d headers = showParen (d > 10) $ do
     case getHeaders headers of
@@ -83,9 +108,53 @@ instance (Show a) => Show (Headers a) where
 
 instance Functor Headers where
   fmap f (Headers rev_s rev_a) =
-    Headers
-      (fmap (fmap (fmap f)) $ rev_s)
-      (fmap (fmap (fmap f)) $ rev_a)
+    Headers (fmap (fmap f) <$> rev_s) (fmap (fmap f) <$> rev_a)
+
+instance Foldable Headers where
+  foldMap f (Headers rev_s rev_a) =
+    foldNodes rev_s <> foldNodes rev_a
+    where
+      foldNodes = getDual . foldMap (Dual . foldNode)
+      foldNode (Tree.Node mx ts) = foldMap f mx <> foldNodes ts
+
+hprop_foldable :: Hh.Property
+hprop_foldable = Hh.property $ do
+  as <- Hh.forAll (Hh.list (Hh.linear 0 10) genHeader)
+  bs <- Hh.forAll (Hh.list (Hh.linear 0 10) genHeader)
+  -- Check mappend
+  foldMap (: []) (fold as <> fold bs)
+    Hh.=== (foldMap (: []) (fold as) ++ foldMap (: []) (fold bs))
+  -- Check mempty
+  foldMap (: []) (mempty :: Headers Int) Hh.=== []
+  -- Sanity check length
+  length (fold as <> fold bs) Hh.=== (length as + length bs)
+
+instance Traversable Headers where
+  traverse f (Headers rev_s rev_a) =
+    Headers <$> traverseNodes rev_s <*> traverseNodes rev_a
+    where
+      traverseNodes =
+        fmap reverse . traverse traverseNode . reverse
+      traverseNode (Tree.Node mx ts) =
+        Tree.Node <$> traverse f mx <*> traverseNodes ts
+
+hprop_traversable :: Hh.Property
+hprop_traversable = Hh.property $ do
+  as <- Hh.forAll (Hh.list (Hh.linear 0 10) genHeader)
+  bs <- Hh.forAll (Hh.list (Hh.linear 0 10) genHeader)
+  let f x = x <$ modify (x :) :: State [Int] Int
+  let run = flip runState []
+  -- Check mappend
+  let (u, xs) = run $ traverse f (fold as <> fold bs)
+  let (v, ys) = run $ liftA2 (<>) (traverse f (fold as)) (traverse f (fold bs))
+  getHeaders u Hh.=== getHeaders v
+  xs Hh.=== ys
+  -- Check mempty
+  let (w, zs) = runState (traverse f (mempty :: Headers Int)) []
+  getHeaders w Hh.=== []
+  zs Hh.=== []
+  -- Sanity check length
+  length xs Hh.=== (length as + length bs)
 
 section :: a -> Int -> Headers a
 section name lvl = Headers [tree lvl] []
@@ -98,32 +167,6 @@ appendix :: a -> Headers a
 appendix name = Headers [] [tree]
   where
     tree = Tree.Node (Just name) []
-
--- ** Tests
-
-genSingleHeader :: Hh.Gen (Headers Int)
-genSingleHeader = do
-  let genSection = do
-        label <- Hh.prune $ Hh.int (Hh.linear 0 100)
-        level <- Hh.int (Hh.linear 1 10)
-        pure (section label level)
-  let genAppendix = do
-        label <- Hh.prune $ Hh.int (Hh.linear 0 100)
-        pure (appendix label)
-  Hh.choice [genSection, genAppendix]
-
-hprop_identity :: Hh.Property
-hprop_identity = Hh.property $ do
-  as <- Hh.forAll (foldMap id <$> Hh.list (Hh.linear 0 10) genSingleHeader)
-  getHeaders (mempty <> as) Hh.=== getHeaders as
-  getHeaders (as <> mempty) Hh.=== getHeaders as
-
-hprop_associativity :: Hh.Property
-hprop_associativity = Hh.property $ do
-  as <- Hh.forAll (foldMap id <$> Hh.list (Hh.linear 0 10) genSingleHeader)
-  bs <- Hh.forAll (foldMap id <$> Hh.list (Hh.linear 0 10) genSingleHeader)
-  cs <- Hh.forAll (foldMap id <$> Hh.list (Hh.linear 0 10) genSingleHeader)
-  getHeaders ((as <> bs) <> cs) Hh.=== getHeaders (as <> (bs <> cs))
 
 -- * getHeaders
 
@@ -230,9 +273,9 @@ getLastHeader (Headers rev_s rev_a)
 -- getHeaders.
 hprop_getLastHeader :: Hh.Property
 hprop_getLastHeader = Hh.property $ do
-  hs <- Hh.forAll (Hh.list (Hh.linear 0 10) genSingleHeader)
-  Hh.annotateShow (foldMap id hs)
-  getLastHeader (foldMap id hs) Hh.=== lastMay (getHeaders (foldMap id hs))
+  hs <- Hh.forAll (Hh.list (Hh.linear 0 10) genHeader)
+  Hh.annotateShow (fold hs)
+  getLastHeader (fold hs) Hh.=== lastMay (getHeaders (fold hs))
 
 -- * Helpers
 
@@ -245,3 +288,16 @@ unsnoc f = go mempty
 
 lastMay :: [a] -> Maybe a
 lastMay = fmap snd . unsnoc (const ())
+
+-- * Generators
+
+genHeader :: Hh.Gen (Headers Int)
+genHeader = do
+  let genSection = do
+        label <- Hh.prune $ Hh.int (Hh.linear 0 100)
+        level <- Hh.int (Hh.linear 1 10)
+        pure (section label level)
+  let genAppendix = do
+        label <- Hh.prune $ Hh.int (Hh.linear 0 100)
+        pure (appendix label)
+  Hh.choice [genSection, genAppendix]
